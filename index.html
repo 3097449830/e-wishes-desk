@@ -1,0 +1,1303 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>E-Wishes Desk</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700;900&family=Poppins:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+
+<!-- ══ FIREBASE SDK ══ -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, doc, addDoc, getDoc, getDocs, setDoc, deleteDoc, onSnapshot, query, where, orderBy, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+// ══════════════════════════════════════════════
+//  ☁️ CLOUDINARY CONFIG
+// ══════════════════════════════════════════════
+const CLOUD_NAME = 'ddgeh88ci';
+const UPLOAD_PRESET = 'ewishes_unsigned';
+
+async function uploadToCloudinary(file, folder='wishes'){
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('upload_preset', UPLOAD_PRESET);
+  formData.append('folder', folder);
+  const res = await fetch('https://api.cloudinary.com/v1_1/'+CLOUD_NAME+'/auto/upload', {
+    method: 'POST',
+    body: formData
+  });
+  if(!res.ok) throw new Error('Upload failed');
+  const data = await res.json();
+  return data.secure_url;
+}
+
+// ══════════════════════════════════════════════
+//  🔥 FIREBASE CONFIG
+// ══════════════════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyA9A1LPUL0sNTmcVhxpT7FdLHOFCnVBuYQ",
+  authDomain: "e-wishes-desk.firebaseapp.com",
+  projectId: "e-wishes-desk",
+  storageBucket: "e-wishes-desk.firebasestorage.app",
+  messagingSenderId: "1631903572",
+  appId: "1:1631903572:web:102029485f7cea2dc6b2c1"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// ══════════════════════════════════════════════
+//  GLOBALS
+// ══════════════════════════════════════════════
+const ADMIN_PASS = 'ewishes2024';
+const AUTO_DELETE_DAYS = 5;
+const COLS = ['#7b2fff','#ff2d78','#00e5ff','#06d6a0','#ffd700','#f72585'];
+const $ = id => document.getElementById(id);
+
+let ST = {
+  user: null,
+  curEventId: null,
+  page: 'home',
+  events: [],
+  unsubWishes: null,
+};
+
+function loadUser(){
+  try{ const u=localStorage.getItem('ew4_user'); if(u) ST.user=JSON.parse(u); }catch(e){}
+}
+function saveUser(){ localStorage.setItem('ew4_user', JSON.stringify(ST.user)); }
+function pickCol(wa){ let h=0; for(let i=0;i<wa.length;i++) h=wa.charCodeAt(i)+((h<<5)-h); return COLS[Math.abs(h)%COLS.length]; }
+function initials(wa){ return wa.slice(-4); }
+function esc(s){ return !s?'':(s+'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function tstr(ts){
+  if(!ts) return '';
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleString('hi-IN',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'short'});
+}
+
+// ══════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', async ()=>{
+  loadUser();
+  await autoDeleteOldWishes();
+  renderUserBar();
+  await loadEvents();
+  handleHash();
+  renderPage('home');
+});
+
+// ══════════════════════════════════════════════
+//  AUTO DELETE
+// ══════════════════════════════════════════════
+async function autoDeleteOldWishes(){
+  try{
+    const cutoff = Timestamp.fromDate(new Date(Date.now() - AUTO_DELETE_DAYS*24*60*60*1000));
+    const q = query(collection(db,'wishes'), where('createdAt','<',cutoff));
+    const snap = await getDocs(q);
+    snap.forEach(d=>deleteDoc(d.ref));
+  }catch(e){}
+}
+
+// ══════════════════════════════════════════════
+//  EVENTS
+// ══════════════════════════════════════════════
+async function loadEvents(){
+  try{
+    const snap = await getDocs(collection(db,'events'));
+    ST.events = snap.docs.map(d=>({id:d.id,...d.data()}));
+    ST.events.sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));
+    if(!ST.curEventId && ST.events.length>0) ST.curEventId=ST.events[0].id;
+    renderEventTabs();
+    renderHomeEvent();
+  }catch(e){
+    showToast('⚠️ Firebase connect करें');
+    renderEventTabs();
+  }
+}
+
+function curEvent(){ return ST.events.find(e=>e.id===ST.curEventId)||null; }
+
+// ══════════════════════════════════════════════
+//  PAGES
+// ══════════════════════════════════════════════
+function renderPage(page){
+  ST.page = page;
+  $('pageHome').style.display = page==='home' ? 'block' : 'none';
+  $('pageWishes').style.display = page==='wishes' ? 'block' : 'none';
+  $('navHome').classList.toggle('on', page==='home');
+  $('navWishes').classList.toggle('on', page==='wishes');
+  if(page==='wishes') subscribeWishes();
+  else if(ST.unsubWishes){ ST.unsubWishes(); ST.unsubWishes=null; }
+}
+
+function goHome(){ renderPage('home'); }
+function goWishes(){
+  if(!ST.curEventId){ showToast('⚠️ कोई Event नहीं है'); return; }
+  renderPage('wishes');
+  setTimeout(()=>subscribeWishes(), 300);
+}
+
+// ══════════════════════════════════════════════
+//  EVENT TABS
+// ══════════════════════════════════════════════
+function renderEventTabs(){
+  const tabs = $('evTabs'); tabs.innerHTML='';
+  if(ST.events.length===0){ tabs.style.display='none'; return; }
+  tabs.style.display='flex';
+  ST.events.forEach(ev=>{
+    const btn=document.createElement('button');
+    btn.className='ev-tab'+(ev.id===ST.curEventId?' on':'');
+    btn.textContent='🎉 '+ev.name.slice(0,16);
+    btn.onclick=()=>{ ST.curEventId=ev.id; renderEventTabs(); renderHomeEvent(); if(ST.page==='wishes') subscribeWishes(); };
+    tabs.appendChild(btn);
+  });
+}
+
+// ══════════════════════════════════════════════
+//  HOME PAGE
+// ══════════════════════════════════════════════
+function renderHomeEvent(){
+  const ev = curEvent();
+  if(!ev){
+    $('evTitle').textContent='इवेंट का नाम यहाँ दिखेगा';
+    $('evDesc').textContent='Admin पैनल से Event सेट करें';
+    $('evType').textContent='Event';
+    $('evMediaWrap').innerHTML='<div class="ev-ph"><div class="ph-icon">🌸</div><p>Admin फोटो/वीडियो अपलोड करें</p></div>';
+    $('statsWrap').style.display='none';
+    return;
+  }
+  $('evTitle').textContent=ev.name||'';
+  $('evDesc').textContent=ev.desc||'';
+  $('evType').textContent=ev.type||'Event';
+  const wrap=$('evMediaWrap'); wrap.innerHTML='';
+  if(ev.mediaURL){
+    if(ev.mediaType==='video'){
+      wrap.innerHTML=`<video src="${ev.mediaURL}" autoplay loop muted playsinline controls onclick="openMediaViewer('video','${ev.mediaURL}')" style="width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in"></video>`;
+    }else{
+      wrap.innerHTML=`<img src="${ev.mediaURL}" onclick="openMediaViewer('image','${ev.mediaURL}')" style="width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in">`;
+    }
+  }else{
+    wrap.innerHTML='<div class="ev-ph"><div class="ph-icon">🌸</div><p>Admin फोटो/वीडियो अपलोड करें</p></div>';
+  }
+  $('statsWrap').style.display='flex';
+  loadStats(ev.id);
+}
+
+async function loadStats(evId){
+  try{
+    const snap=await getDocs(query(collection(db,'wishes'),where('eventId','==',evId)));
+    const all=snap.docs.map(d=>d.data());
+    $('stAll').textContent=all.length;
+    $('stTxt').textContent=all.filter(w=>w.type==='text').length;
+    $('stImg').textContent=all.filter(w=>w.type==='image').length;
+    $('stVid').textContent=all.filter(w=>w.type==='video').length;
+  }catch(e){}
+}
+
+// ══════════════════════════════════════════════
+//  BANNER
+// ══════════════════════════════════════════════
+function renderBanner(){
+  const wrap=$('bannerWrap');
+  const bm=localStorage.getItem('ew4_bannerURL');
+  const bt=localStorage.getItem('ew4_bannerType');
+  if(bm){
+    setBannerMedia(wrap,bm,bt);
+    return;
+  }
+  getDoc(doc(db,'settings','banner')).then(snap=>{
+    if(snap.exists()){
+      const d=snap.data();
+      localStorage.setItem('ew4_bannerURL',d.url);
+      localStorage.setItem('ew4_bannerType',d.type);
+      setBannerMedia(wrap,d.url,d.type);
+    }else{
+      wrap.innerHTML='<div class="banner-ph"><span>🌺</span><p>Company Banner — Admin से अपलोड करें</p></div>';
+    }
+  }).catch(()=>{
+    wrap.innerHTML='<div class="banner-ph"><span>🌺</span><p>Company Banner — Admin से अपलोड करें</p></div>';
+  });
+}
+
+function setBannerMedia(wrap,url,type){
+  wrap.innerHTML='';
+  if(type==='video'){
+    wrap.innerHTML=`<video src="${url}" autoplay loop muted playsinline onclick="openMediaViewer('video','${url}')" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in"></video>`;
+  }else{
+    wrap.innerHTML=`<img src="${url}" onclick="openMediaViewer('image','${url}')" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in">`;
+  }
+}
+
+// ══════════════════════════════════════════════
+//  USER BAR
+// ══════════════════════════════════════════════
+function renderUserBar(){
+  renderBanner();
+  if(ST.user){
+    $('loginWrap').style.display='none';
+    $('userBarWrap').style.display='flex';
+    const av=$('userAv');
+    if(ST.user.photoURL){
+      av.innerHTML=`<img src="${ST.user.photoURL}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+    }else{
+      av.textContent=initials(ST.user.wa);
+      av.style.background=pickCol(ST.user.wa);
+    }
+    $('userWADisp').textContent=ST.user.wa;
+  }else{
+    $('loginWrap').style.display='block';
+    $('userBarWrap').style.display='none';
+  }
+}
+
+function doLogin(){
+  const wa=$('inpWA').value.trim();
+  if(!wa||wa.length<10||isNaN(wa)){ showToast('⚠️ सही 10 अंक का नंबर डालें'); return; }
+  ST.user={wa, photoURL:null};
+  saveUser(); renderUserBar();
+  showToast('✅ स्वागत है! अब फोटो लगाएं या बधाई दें 🌸');
+  $('photoPrompt').style.display='block';
+}
+
+function doLogout(){ ST.user=null; saveUser(); renderUserBar(); $('photoPrompt').style.display='none'; }
+
+function onUserPhoto(inp){
+  const file=inp.files[0]; if(!file) return;
+  const img=new Image();
+  const url=URL.createObjectURL(file);
+  img.onload=function(){
+    const canvas=document.createElement('canvas');
+    const MAX=120;
+    let w=img.width,h=img.height;
+    const min=Math.min(w,h);
+    const sx=(w-min)/2, sy=(h-min)/2;
+    canvas.width=MAX; canvas.height=MAX;
+    canvas.getContext('2d').drawImage(img,sx,sy,min,min,0,0,MAX,MAX);
+    const compressed=canvas.toDataURL('image/jpeg',0.7);
+    URL.revokeObjectURL(url);
+    localStorage.setItem('ew4_photo_'+ST.user.wa, compressed);
+    ST.user.photoURL=compressed;
+    saveUser(); renderUserBar();
+    $('photoPrompt').style.display='none';
+    showToast('✅ फोटो लग गई! 🌸');
+  };
+  img.src=url;
+}
+
+// ══════════════════════════════════════════════
+//  WISHES FEED
+// ══════════════════════════════════════════════
+function subscribeWishes(){
+  if(ST.unsubWishes){ ST.unsubWishes(); ST.unsubWishes=null; }
+  if(!ST.curEventId) return;
+  $('wishFeed').innerHTML='<div class="loading">🌸 बधाइयाँ लोड हो रही हैं...</div>';
+  try{
+    const q=query(collection(db,'wishes'),where('eventId','==',ST.curEventId),orderBy('createdAt','desc'));
+    ST.unsubWishes=onSnapshot(q, snap=>{
+      const wishes=snap.docs.map(d=>({id:d.id,...d.data()}));
+      renderWishes(wishes);
+      $('stAll').textContent=wishes.length;
+      $('stTxt').textContent=wishes.filter(w=>w.type==='text').length;
+      $('stImg').textContent=wishes.filter(w=>w.type==='image').length;
+      $('stVid').textContent=wishes.filter(w=>w.type==='video').length;
+      $('vaC').textContent=wishes.length;
+    }, err=>{
+      const q2=query(collection(db,'wishes'),where('eventId','==',ST.curEventId));
+      ST.unsubWishes=onSnapshot(q2, snap2=>{
+        const wishes2=snap2.docs.map(d=>({id:d.id,...d.data()}))
+          .sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));
+        renderWishes(wishes2);
+      }, err2=>{
+        $('wishFeed').innerHTML='<div class="empty-state">🌸🌼🌺<br>अभी कोई बधाई नहीं है<br>पहले बधाई देने वाले आप बनें!</div>';
+      });
+    });
+  }catch(e){
+    $('wishFeed').innerHTML='<div class="empty-state">🌸🌼🌺<br>अभी कोई बधाई नहीं है<br>पहले बधाई देने वाले आप बनें!</div>';
+  }
+}
+
+function renderWishes(wishes){
+  const feed=$('wishFeed'); feed.innerHTML='';
+  if(wishes.length===0){
+    feed.innerHTML='<div class="empty-state">🌸🌼🌺<br><br>अभी कोई बधाई नहीं है<br>पहले बधाई देने वाले आप बनें!</div>';
+    return;
+  }
+  wishes.forEach(w=>feed.appendChild(buildCard(w)));
+  $('stAll').textContent=wishes.length;
+  $('stTxt').textContent=wishes.filter(w=>w.type==='text').length;
+  $('stImg').textContent=wishes.filter(w=>w.type==='image').length;
+  $('stVid').textContent=wishes.filter(w=>w.type==='video').length;
+}
+
+function buildCard(w){
+  const isOwner = ST.user && ST.user.wa===w.wa;
+  const liked = ST.user && (w.likes||[]).includes(ST.user.wa);
+  const lc = (w.likes||[]).length;
+
+  const card=document.createElement('div');
+  card.className='wcard'; card.dataset.id=w.id;
+
+  let avHTML='';
+  const savedPhoto=localStorage.getItem('ew4_photo_'+w.wa);
+  if(savedPhoto){
+    avHTML=`<img src="${savedPhoto}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+  }else{
+    avHTML=`<span style="font-size:13px;font-weight:900;color:#fff">${esc(w.wa.slice(-4))}</span>`;
+  }
+
+  let mediaHTML='';
+  if(w.mediaURL){
+    if(w.type==='image') mediaHTML=`<div class="cmedia"><img src="${w.mediaURL}" loading="lazy" onclick="openMediaViewer('image','${w.mediaURL}')" style="cursor:zoom-in"></div>`;
+    else if(w.type==='video') mediaHTML=`<div class="cmedia" style="position:relative"><video src="${w.mediaURL}" controls playsinline preload="metadata" style="width:100%;display:block;max-height:300px;background:#000;border-radius:8px;"></video><button onclick="openMediaViewer('video','${w.mediaURL}')" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,.6);border:none;color:#fff;font-size:11px;padding:4px 8px;border-radius:8px;cursor:pointer;">⛶ Full</button></div>`;
+  }
+
+  const tbC={text:'bt',image:'bi',video:'bv'}[w.type];
+  const tbL={text:'Text',image:'Image',video:'Video'}[w.type];
+
+  card.innerHTML=`
+    <div class="chead">
+      <div class="cav" style="background:${w.photoURL?'transparent':pickCol(w.wa)}">${avHTML}</div>
+      <div class="cinfo">
+        <div class="cname">📱 ${esc(w.wa)}</div>
+        <div class="cmeta">
+          <span class="ctime">${tstr(w.createdAt)}</span>
+        </div>
+      </div>
+      <span class="ctbadge ${tbC}">${tbL}</span>
+    </div>
+    <div class="cbody">
+      ${w.text?`<div class="ctxt">${esc(w.text)}</div>`:''}
+      ${mediaHTML}
+    </div>
+    <div class="cact">
+      <button class="btn-like ${liked?'liked':''}" onclick="doLike('${w.id}','${w.wa}')">
+        ${liked?'❤️':'🤍'} ${lc>0?lc:'Like'}
+      </button>
+      <div class="lktxt">${lc>0?'❤️ '+lc+' like':''}</div>
+      ${isOwner?`<button class="btn-del" onclick="doDelete('${w.id}')">🗑️</button>`:''}
+    </div>`;
+  return card;
+}
+
+function openMediaViewer(type, src){
+  const mv=$('mediaViewer');
+  const img=$('mvImg'), vid=$('mvVid');
+  if(type==='video'){
+    img.style.display='none'; img.src='';
+    vid.style.display='block'; vid.src=src;
+    vid.play().catch(()=>{});
+  } else {
+    vid.style.display='none'; vid.src=''; vid.pause && vid.pause();
+    img.style.display='block'; img.src=src;
+  }
+  mv.classList.add('open');
+}
+function closeMediaViewer(){
+  const vid=$('mvVid');
+  vid.pause && vid.pause(); vid.src='';
+  $('mvImg').src='';
+  $('mediaViewer').classList.remove('open');
+}
+window.closeImg=closeMediaViewer;
+window.openImg=src=>openMediaViewer('image',src);
+
+// ══════════════════════════════════════════════
+//  POST FORM — FIX 3: File switching bug fixed
+//  Rule: Once a file is uploaded, it stays until
+//  a NEW file of ANY type is uploaded.
+//  Switching tabs never clears the uploaded file.
+// ══════════════════════════════════════════════
+let pType='text', pFile=null, pFileType=null;
+
+window.setPType=function(t,el){
+  pType=t;
+  document.querySelectorAll('.ptab').forEach(x=>x.classList.remove('on'));
+  el.classList.add('on');
+
+  // Always hide/show text area
+  $('txtArea').style.display = t==='text' ? 'block' : 'none';
+
+  if(t==='text'){
+    // Text tab: hide upload zone
+    // Do NOT clear pFile — file stays in memory
+    $('upzone').style.display='none';
+    // Keep preview hidden on text tab (file still saved)
+    $('fprev').style.display='none';
+  } else {
+    // Image or Video tab
+    if(pFile){
+      if(pFileType === t){
+        // Same type as current file → show preview, hide upload zone
+        $('upzone').style.display='none';
+        $('fprev').style.display='block';
+        // Make sure correct element is shown
+        if(t==='image'){ $('pimg').style.display='block'; $('pvid').style.display='none'; }
+        else{ $('pvid').style.display='block'; $('pimg').style.display='none'; }
+      } else {
+        // Different type (e.g. have image, switched to video or vice versa)
+        // Show upload zone for new file, but keep old file in memory
+        // Show existing file preview anyway with a note
+        $('upzone').style.display='block';
+        $('fprev').style.display='none';
+      }
+    } else {
+      // No file uploaded yet → show upload zone
+      $('upzone').style.display='block';
+      $('fprev').style.display='none';
+    }
+  }
+
+  const fi=$('finp');
+  if(t==='image'){fi.accept='image/*';$('uic').textContent='🖼';$('uhint').textContent='फोटो चुनें';}
+  else if(t==='video'){fi.accept='video/*';$('uic').textContent='🎥';$('uhint').textContent='वीडियो चुनें (15 sec तक)';}
+};
+
+window.onFile=function(inp){
+  const file=inp.files[0]; if(!file) return;
+  const isVid=file.type.startsWith('video');
+  if(isVid && file.size>15*1024*1024){ showToast('⚠️ Video 15MB से छोटी होनी चाहिए'); inp.value=''; return; }
+  if(!isVid && file.size>5*1024*1024){ showToast('⚠️ Photo 5MB से छोटी होनी चाहिए'); inp.value=''; return; }
+  if(isVid){
+    const url=URL.createObjectURL(file);
+    const vid=document.createElement('video');
+    vid.preload='metadata';
+    vid.onloadedmetadata=function(){
+      URL.revokeObjectURL(url);
+      if(vid.duration>30){ showToast('⚠️ Video 30 सेकंड से छोटी होनी चाहिए! Auto Reject ❌'); inp.value=''; return; }
+      // New file uploaded → update pFile and pFileType
+      pFile=file; pFileType='video';
+      const reader=new FileReader();
+      reader.onload=e=>{
+        $('fprev').style.display='block';
+        $('upzone').style.display='none';
+        $('pvid').src=e.target.result;
+        $('pvid').style.display='block';
+        $('pimg').style.display='none';
+      };
+      reader.readAsDataURL(file);
+    };
+    vid.src=url;
+    return;
+  }
+  // New image uploaded → update pFile and pFileType
+  pFile=file; pFileType='image';
+  const reader=new FileReader();
+  reader.onload=e=>{
+    $('fprev').style.display='block';
+    $('upzone').style.display='none';
+    $('pimg').src=e.target.result;
+    $('pimg').style.display='block';
+    $('pvid').style.display='none';
+  };
+  reader.readAsDataURL(file);
+};
+
+function compressImage(file){
+  return new Promise(res=>{
+    const img=new Image();
+    const url=URL.createObjectURL(file);
+    img.onload=function(){
+      const canvas=document.createElement('canvas');
+      const MAX=1024;
+      let w=img.width,h=img.height;
+      if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}
+      canvas.width=w;canvas.height=h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(url);
+      res(canvas.toDataURL('image/jpeg',0.75));
+    };
+    img.src=url;
+  });
+}
+
+window.submitPost=async function(){
+  if(!ST.user){ showToast('⚠️ पहले नंबर डालें'); return; }
+  if(!ST.curEventId){ showToast('⚠️ कोई Event नहीं'); return; }
+  const txt=$('ptxt').value.trim();
+
+  // FIX: अगर file upload है तो actual type = pFileType (चाहे text tab active हो)
+  // अगर file नहीं है और text भी नहीं → error
+  const actualType = pFile ? pFileType : 'text';
+  if(actualType==='text'&&!txt){ showToast('⚠️ कुछ लिखें!'); return; }
+  if(actualType!=='text'&&!pFile){ showToast('⚠️ फाइल चुनें!'); return; }
+
+  $('btnSend').disabled=true; $('btnSend').textContent='⏳ भेज रहे हैं...';
+
+  try{
+    let mediaURL=null;
+    if(pFile){
+      showToast('⏳ Media अपलोड हो रहा है...');
+      try{
+        mediaURL = await uploadToCloudinary(pFile, 'wishes');
+      }catch(uploadErr){
+        if(pFileType==='image'){
+          mediaURL = await compressImage(pFile);
+        } else {
+          mediaURL = await new Promise(res=>{
+            const r=new FileReader();
+            r.onload=e=>res(e.target.result);
+            r.readAsDataURL(pFile);
+          });
+        }
+      }
+    }
+
+    await addDoc(collection(db,'wishes'),{
+      eventId: ST.curEventId,
+      wa: ST.user.wa,
+      text: txt||'',
+      mediaURL: mediaURL,
+      type: actualType,  // pFile है तो pFileType, नहीं तो 'text'
+      likes: [],
+      createdAt: serverTimestamp(),
+    });
+
+    // Reset form after successful post
+    $('ptxt').value=''; $('finp').value='';
+    $('fprev').style.display='none'; $('pimg').src=''; $('pvid').src='';
+    pFile=null; pFileType=null;
+    // Reset to text tab
+    pType='text';
+    document.querySelectorAll('.ptab').forEach(x=>x.classList.remove('on'));
+    document.querySelector('.ptab').classList.add('on');
+    $('txtArea').style.display='block';
+    $('upzone').style.display='none';
+
+    playSuccessSound(); launchConfetti(); showToast('🎉 बधाई भेज दी गई! 🌸');
+    setTimeout(()=>$('wishFeed').scrollIntoView({behavior:'smooth'}),300);
+  }catch(e){
+    showToast('⚠️ Error: '+e.message);
+  }finally{
+    $('btnSend').disabled=false; $('btnSend').textContent='🎉 बधाई भेजें';
+  }
+};
+
+// ══════════════════════════════════════════════
+//  LIKE & DELETE
+// ══════════════════════════════════════════════
+window.doLike=async function(id,ownerWa){
+  if(!ST.user){ showToast('⚠️ पहले नंबर डालें'); return; }
+  try{
+    const ref2=doc(db,'wishes',id);
+    const snap=await getDoc(ref2);
+    if(!snap.exists()) return;
+    const likes=snap.data().likes||[];
+    const idx=likes.indexOf(ST.user.wa);
+    if(idx>-1) likes.splice(idx,1); else likes.push(ST.user.wa);
+    await setDoc(ref2,{likes},{merge:true});
+  }catch(e){ showToast('⚠️ Like नहीं हो सका'); }
+};
+
+window.doDelete=async function(id){
+  if(!confirm('यह पोस्ट हटाएं?')) return;
+  try{
+    await deleteDoc(doc(db,'wishes',id));
+    showToast('🗑️ पोस्ट हटाई गई');
+  }catch(e){ showToast('⚠️ हटा नहीं सका'); }
+};
+
+// ══════════════════════════════════════════════
+//  ADMIN
+// ══════════════════════════════════════════════
+window.openAdminLogin=()=>{ $('apass').value=''; openOvl('ovlLogin'); setTimeout(()=>$('apass').focus(),200); };
+window.chkPass=()=>{
+  if($('apass').value===ADMIN_PASS){ closeOvl('ovlLogin'); openAdminPanel(); }
+  else{ showToast('❌ गलत पासवर्ड'); $('apass').value=''; }
+};
+
+function openAdminPanel(){
+  const bURL=localStorage.getItem('ew4_bannerURL');
+  if(bURL){ $('aBannerPrev').src=bURL; $('aBannerPrev').style.display='block'; }
+  else{ $('aBannerPrev').style.display='none'; }
+  renderAdminEventList();
+  openOvl('ovlAdmin');
+}
+
+window.onAdminBanner=function(inp){
+  const file=inp.files[0]; if(!file) return;
+  if(file.size>10*1024*1024){ showToast('⚠️ 10MB से छोटी file चुनें'); return; }
+  const isVid=file.type.startsWith('video');
+  const type=isVid?'video':'image';
+  showToast('⏳ Banner upload हो रहा है...');
+  $('aBannerPrev').style.display='none';
+  if(!isVid){
+    const img2=new Image();
+    const url2=URL.createObjectURL(file);
+    img2.onload=async function(){
+      const canvas=document.createElement('canvas');
+      const MAX=1200;
+      let w=img2.width,h=img2.height;
+      if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}
+      canvas.width=w;canvas.height=h;
+      canvas.getContext('2d').drawImage(img2,0,0,w,h);
+      URL.revokeObjectURL(url2);
+      canvas.toBlob(async function(blob){
+        const compressedFile=new File([blob],'banner.jpg',{type:'image/jpeg'});
+        await doUploadBanner(compressedFile,'image');
+      },'image/jpeg',0.75);
+    };
+    img2.src=url2;
+  } else {
+    doUploadBanner(file,'video');
+  }
+};
+
+async function doUploadBanner(file,type){
+  try{
+    const mediaURL=await uploadToCloudinary(file,'banners');
+    await setDoc(doc(db,'settings','banner'),{
+      url:mediaURL,
+      type:type,
+      updatedAt:serverTimestamp()
+    });
+    localStorage.setItem('ew4_bannerURL',mediaURL);
+    localStorage.setItem('ew4_bannerType',type);
+    $('aBannerPrev').src=mediaURL;
+    $('aBannerPrev').style.display='block';
+    renderBanner();
+    showToast('✅ Banner लग गया!');
+  }catch(err){
+    showToast('⚠️ Banner upload failed: '+err.message);
+  }
+}
+
+function renderAdminEventList(){
+  const list=$('adminEvList'); list.innerHTML='';
+  if(ST.events.length===0){
+    list.innerHTML='<div style="font-size:12px;color:var(--sub);padding:6px">कोई Event नहीं — नया जोड़ें</div>';
+    return;
+  }
+  ST.events.forEach(ev=>{
+    const baseURL=window.location.href.split('?')[0].split('#')[0];
+    const link=`${baseURL}?ev=${ev.id}`;
+    const d=document.createElement('div'); d.className='aev-item';
+    d.innerHTML=`
+      <div style="font-weight:700;font-size:13px;color:#fff;margin-bottom:6px">${esc(ev.name)}</div>
+      <div class="ev-link-row">
+        <span class="ev-link-txt" id="lnk_${ev.id}">${link}</span>
+        <button class="btn-copy" onclick="copyLink('${ev.id}','${link}')">📋 Copy</button>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button class="btn-aev-sel" onclick="editEvModal('${ev.id}')">✏️ Edit</button>
+        <button class="btn-aev-del" onclick="deleteEv('${ev.id}')">🗑️ Delete</button>
+      </div>`;
+    list.appendChild(d);
+  });
+}
+
+window.copyLink=function(evId,link){
+  if(navigator.clipboard){ navigator.clipboard.writeText(link).then(()=>showToast('📋 Link Copy हो गया! WhatsApp पर भेजें 🚀')); }
+  else{ const t=document.createElement('textarea');t.value=link;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);showToast('📋 Copy हो गया!'); }
+};
+
+window.openNewEvModal=()=>{
+  $('aeId').value='';
+  $('aeName').value=''; $('aeDesc').value='';
+  $('aeType').value='जन्मदिन 🎂';
+  $('aePrevImg').style.display='none'; $('aePrevVid').style.display='none';
+  $('evModalTitle').textContent='➕ नया Event';
+  window._aeMediaFile=null;
+  closeOvl('ovlAdmin'); openOvl('ovlEvent');
+};
+
+window.editEvModal=function(id){
+  const ev=ST.events.find(e=>e.id===id); if(!ev) return;
+  $('aeId').value=id;
+  $('aeName').value=ev.name||'';
+  $('aeDesc').value=ev.desc||'';
+  $('aeType').value=ev.type||'जन्मदिन 🎂';
+  if(ev.mediaURL){
+    if(ev.mediaType==='video'){ $('aePrevVid').src=ev.mediaURL;$('aePrevVid').style.display='block';$('aePrevImg').style.display='none'; }
+    else{ $('aePrevImg').src=ev.mediaURL;$('aePrevImg').style.display='block';$('aePrevVid').style.display='none'; }
+  }else{ $('aePrevImg').style.display='none'; $('aePrevVid').style.display='none'; }
+  $('evModalTitle').textContent='✏️ Event Edit करें';
+  window._aeMediaFile=null;
+  closeOvl('ovlAdmin'); openOvl('ovlEvent');
+};
+
+window.onEvMedia=function(inp){
+  const file=inp.files[0]; if(!file) return;
+  window._aeMediaFile=file;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const isVid=file.type.startsWith('video');
+    if(isVid){ $('aePrevVid').src=e.target.result;$('aePrevVid').style.display='block';$('aePrevImg').style.display='none'; }
+    else{ $('aePrevImg').src=e.target.result;$('aePrevImg').style.display='block';$('aePrevVid').style.display='none'; }
+  };
+  reader.readAsDataURL(file);
+};
+
+window.saveEvent=async function(){
+  const name=$('aeName').value.trim();
+  if(!name){ showToast('⚠️ Event का नाम डालें'); return; }
+  $('btnEvSave').disabled=true; $('btnEvSave').textContent='⏳ Save हो रहा है...';
+  try{
+    const existId=$('aeId').value;
+    let mediaURL=null, mediaType=null;
+    if(window._aeMediaFile){
+      const file=window._aeMediaFile;
+      mediaType=file.type.startsWith('video')?'video':'image';
+      showToast('⏳ Media अपलोड हो रहा है...');
+      mediaURL = await uploadToCloudinary(file, 'events');
+    } else if(existId){
+      const ex=ST.events.find(e=>e.id===existId);
+      if(ex){ mediaURL=ex.mediaURL||null; mediaType=ex.mediaType||null; }
+    }
+
+    const evData={
+      name, type:$('aeType').value, desc:$('aeDesc').value.trim(),
+      mediaURL, mediaType, createdAt: serverTimestamp(),
+    };
+
+    let savedId=existId;
+    if(existId){ await setDoc(doc(db,'events',existId),evData,{merge:true}); }
+    else{ const ref2=await addDoc(collection(db,'events'),evData); savedId=ref2.id; }
+
+    await loadEvents();
+    ST.curEventId=savedId;
+    renderEventTabs(); renderHomeEvent();
+
+    const baseURL=window.location.href.split('?')[0].split('#')[0];
+    const link=`${baseURL}?ev=${savedId}`;
+    closeOvl('ovlEvent');
+    showLinkModal(name, link);
+    window._aeMediaFile=null;
+  }catch(e){
+    showToast('⚠️ Error: '+e.message);
+  }finally{
+    $('btnEvSave').disabled=false; $('btnEvSave').textContent='💾 Event Save करें';
+  }
+};
+
+function showLinkModal(name, link){
+  $('linkEvName').textContent=name;
+  $('linkURL').textContent=link;
+  $('linkURL').dataset.link=link;
+  openOvl('ovlLink');
+}
+
+window.copyEventLink=function(){
+  const link=$('linkURL').dataset.link;
+  const ev=curEvent();
+  const evName=ev?ev.name:'E-Wishes Desk';
+  const msg='🎉 *'+evName+'*\n\n👇 बधाई देने के लिए Click करें:\n'+link+'\n\n🚫 Group में बधाई न भेजें\n✅ केवल Link पर बधाई दें 🙏';
+  if(navigator.clipboard){ navigator.clipboard.writeText(msg).then(()=>showToast('📋 Message Copy! WhatsApp पर Paste करें 🚀')); }
+  else{ const t=document.createElement('textarea');t.value=msg;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);showToast('📋 Copy हो गया!'); }
+};
+
+window.shareOnWhatsApp=function(){
+  const link=$('linkURL').dataset.link;
+  const ev=curEvent();
+  const evName=ev?ev.name:'E-Wishes Desk';
+  const msg='🎉 *'+evName+'*\n\n👇 बधाई देने के लिए नीचे Link पर Click करें:\n'+link+'\n\n🚫 कृपया Group में बधाई न भेजें\n✅ केवल Link पर ही बधाई दें 🙏';
+  window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+};
+
+window.deleteEv=async function(id){
+  if(!confirm('यह Event हटाएं? सभी बधाइयाँ भी हट जाएंगी!')) return;
+  try{
+    const wSnap=await getDocs(query(collection(db,'wishes'),where('eventId','==',id)));
+    wSnap.forEach(d=>deleteDoc(d.ref));
+    await deleteDoc(doc(db,'events',id));
+    await loadEvents();
+    if(ST.curEventId===id) ST.curEventId=ST.events.length>0?ST.events[0].id:null;
+    renderEventTabs(); renderHomeEvent();
+    renderAdminEventList();
+    showToast('🗑️ Event हटाया गया');
+  }catch(e){ showToast('⚠️ Error: '+e.message); }
+};
+
+window.adminClearWishes=async function(){
+  if(!confirm('इस Event की सभी बधाइयाँ हटाएं?')) return;
+  if(!ST.curEventId) return;
+  try{
+    const wSnap=await getDocs(query(collection(db,'wishes'),where('eventId','==',ST.curEventId)));
+    wSnap.forEach(d=>deleteDoc(d.ref));
+    showToast('🗑️ सभी बधाइयाँ हटाई गईं');
+  }catch(e){ showToast('⚠️ Error'); }
+};
+
+// ══════════════════════════════════════════════
+//  URL HASH
+// ══════════════════════════════════════════════
+function handleHash(){
+  const params=new URLSearchParams(window.location.search);
+  const evId=params.get('ev');
+  if(evId && ST.events.find(e=>e.id===evId)){
+    ST.curEventId=evId;
+    renderEventTabs(); renderHomeEvent();
+  }
+}
+
+// ══════════════════════════════════════════════
+//  SOUND & CONFETTI
+// ══════════════════════════════════════════════
+function playSuccessSound(){
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    [523,659,784,1047].forEach((f,i)=>{
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.connect(g);g.connect(ctx.destination);
+      o.frequency.value=f;o.type='sine';
+      const t=ctx.currentTime+i*.12;
+      g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.25,t+.04);
+      g.gain.linearRampToValueAtTime(0,t+.2);
+      o.start(t);o.stop(t+.25);
+    });
+  }catch(e){}
+}
+
+function launchConfetti(){
+  const cv=$('confettiCanvas');
+  cv.width=window.innerWidth; cv.height=window.innerHeight;
+  const ctx=cv.getContext('2d');
+  const cols=['#ffd700','#ff2d78','#00e5ff','#7b2fff','#ff6b35','#86efac','#f72585'];
+  const pieces=Array.from({length:100},()=>({
+    x:Math.random()*cv.width, y:-10,
+    r:Math.random()*6+3,
+    c:cols[Math.floor(Math.random()*cols.length)],
+    vx:(Math.random()-.5)*5, vy:Math.random()*4+2,
+    rot:Math.random()*360, vr:(Math.random()-.5)*8, op:1
+  }));
+  let fr=0;
+  (function draw(){
+    ctx.clearRect(0,0,cv.width,cv.height);
+    let alive=false;
+    pieces.forEach(p=>{
+      p.x+=p.vx;p.y+=p.vy;p.rot+=p.vr;p.op-=.012;
+      if(p.op>0){alive=true;ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot*Math.PI/180);ctx.globalAlpha=p.op;ctx.fillStyle=p.c;ctx.fillRect(-p.r,-p.r/2,p.r*2,p.r);ctx.restore();}
+    });
+    if(alive&&fr++<200) requestAnimationFrame(draw);
+    else ctx.clearRect(0,0,cv.width,cv.height);
+  })();
+}
+
+// ══════════════════════════════════════════════
+//  OVERLAY HELPERS
+// ══════════════════════════════════════════════
+function openOvl(id){ $(id).classList.add('show'); }
+function closeOvl(id){ $(id).classList.remove('show'); }
+window.closeOvl=closeOvl;
+
+document.addEventListener('DOMContentLoaded',()=>{
+  document.querySelectorAll('.ovl').forEach(o=>{
+    o.addEventListener('click',e=>{ if(e.target===o) o.classList.remove('show'); });
+  });
+});
+
+let toastT=null;
+function showToast(msg){
+  const t=$('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),3000);
+}
+window.showToast=showToast;
+
+window.goHome=goHome; window.goWishes=goWishes;
+window.doLogin=doLogin; window.doLogout=doLogout;
+window.onUserPhoto=onUserPhoto; window.openAdminLogin=openAdminLogin;
+window.openMediaViewer=openMediaViewer; window.closeMediaViewer=closeMediaViewer;
+</script>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#0a0015;--purple:#7b2fff;--pink:#ff2d78;--cyan:#00e5ff;
+  --gold:#ffd700;--green:#25D366;--danger:#ff4444;
+  --card:rgba(255,255,255,0.05);
+  --bp:rgba(123,47,255,0.45);--sub:rgba(255,255,255,0.55);
+}
+body{font-family:'Poppins','Noto Sans Devanagari',sans-serif;background:var(--bg);color:#fff;min-height:100vh;overflow-x:hidden;padding-bottom:90px}
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(ellipse at 15% 15%,rgba(123,47,255,.25) 0%,transparent 50%),
+             radial-gradient(ellipse at 85% 85%,rgba(255,45,120,.2) 0%,transparent 50%)}
+
+#confettiCanvas{position:fixed;inset:0;z-index:999;pointer-events:none}
+
+/* ══ FIX 1: BANNER 16:9 — padding-top:56.25% ══ */
+#bannerWrap{
+  position:relative;
+  width:100%;
+  padding-top:56.25%;  /* 16:9 ratio */
+  background:linear-gradient(135deg,#0d0025,#1a0040);
+  border-bottom:2px solid var(--purple);
+  overflow:hidden;
+  z-index:10;
+  cursor:zoom-in
+}
+.banner-ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--sub);font-size:11px}
+.banner-ph span{font-size:28px}
+
+/* ── HEADER ── */
+.hdr{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(10,0,21,.95);backdrop-filter:blur(16px);border-bottom:1px solid var(--bp)}
+.logo{font-size:18px;font-weight:900;background:linear-gradient(135deg,#ffd700,#ff2d78,#00e5ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.logo-s{font-size:9px;color:var(--sub)}
+.btn-admin{background:linear-gradient(135deg,rgba(123,47,255,.3),rgba(255,45,120,.3));border:1px solid var(--bp);color:var(--gold);font-size:11px;font-weight:700;padding:6px 12px;border-radius:20px;cursor:pointer;font-family:inherit}
+
+/* ── BOTTOM NAV ── */
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;z-index:30;display:flex;background:rgba(10,0,21,.97);border-top:1px solid var(--bp);backdrop-filter:blur(16px)}
+.nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 4px;cursor:pointer;font-family:inherit;border:none;background:transparent;color:var(--sub);font-size:10px;font-weight:600;gap:3px;transition:all .2s}
+.nav-btn .ni{font-size:20px}
+.nav-btn.on{color:var(--gold)}
+.nav-btn.on .ni{filter:drop-shadow(0 0 6px var(--gold))}
+
+/* ── EVENT TABS ── */
+#evTabs{display:flex;gap:8px;padding:10px 12px;overflow-x:auto;-webkit-overflow-scrolling:touch;position:relative;z-index:5}
+#evTabs::-webkit-scrollbar{display:none}
+.ev-tab{flex-shrink:0;padding:6px 14px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;background:var(--card);border:1px solid var(--bp);color:var(--sub);transition:all .2s}
+.ev-tab.on{background:linear-gradient(135deg,rgba(123,47,255,.4),rgba(255,45,120,.3));border-color:var(--pink);color:#fff}
+
+/* ── HOME PAGE ── */
+#pageHome{position:relative;z-index:5}
+
+/* ── EVENT HERO ── */
+.ev-hero{margin:0 12px 12px;border-radius:18px;overflow:hidden;border:1.5px solid var(--purple);box-shadow:0 0 30px rgba(123,47,255,.3)}
+#evMediaWrap{width:100%;min-height:220px;max-height:300px;background:#000;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.ev-ph{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:40px;color:var(--sub);text-align:center;min-height:200px;width:100%}
+.ph-icon{font-size:48px;animation:gp 2s ease-in-out infinite alternate}
+@keyframes gp{from{filter:drop-shadow(0 0 8px rgba(255,215,0,.3))}to{filter:drop-shadow(0 0 22px rgba(255,215,0,.9))}}
+.ev-info{padding:14px 16px;background:linear-gradient(135deg,rgba(123,47,255,.15),rgba(255,45,120,.1))}
+.ev-badge{display:inline-flex;align-items:center;gap:5px;background:linear-gradient(135deg,#7b2fff,#ff2d78);color:#fff;font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;margin-bottom:8px}
+.ev-title{font-size:17px;font-weight:900;background:linear-gradient(135deg,#ffd700,#fff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;line-height:1.3;word-break:break-word}
+.ev-desc{font-size:14px;font-weight:700;color:#ffd700;margin-top:6px;background:rgba(255,215,0,0.15);padding:4px 10px;border-radius:8px;display:inline-block}
+
+/* ── STATS ── */
+#statsWrap{display:flex;gap:8px;padding:0 12px 12px}
+.sbox{flex:1;text-align:center;background:var(--card);border:1px solid var(--bp);border-radius:14px;padding:10px 4px}
+.sbox .n{font-size:20px;font-weight:900;background:linear-gradient(135deg,#ffd700,#ffaa00);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sbox .l{font-size:10px;color:var(--sub);display:block;margin-top:2px}
+
+/* ── USER SECTION ── */
+.usec{margin:0 12px 12px;background:var(--card);border:1px solid var(--bp);border-radius:16px;padding:14px}
+.sec-title{font-size:13px;font-weight:700;color:var(--cyan);margin-bottom:10px}
+.iw{position:relative;margin-bottom:8px}
+.iw .ico{position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;pointer-events:none}
+.inp{width:100%;background:rgba(255,255,255,.07);border:1px solid var(--bp);color:#fff;font-size:14px;padding:12px 12px 12px 36px;border-radius:10px;font-family:inherit;outline:none}
+.inp::placeholder{color:rgba(255,255,255,.3)}
+.inp:focus{border-color:var(--cyan)}
+.btn-login{width:100%;background:linear-gradient(135deg,#7b2fff,#ff2d78);color:#fff;font-weight:700;font-size:14px;border:none;padding:12px;border-radius:12px;cursor:pointer;font-family:inherit;box-shadow:0 4px 18px rgba(123,47,255,.4)}
+.ubar{display:flex;align-items:center;gap:10px}
+.uav{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;flex-shrink:0;overflow:hidden;border:2px solid var(--purple)}
+.uinfo{flex:1}
+.uname2{font-size:13px;font-weight:700}
+.uwa2{font-size:11px;color:var(--green);margin-top:2px}
+.btn-out{background:rgba(255,68,68,.15);border:1px solid rgba(255,68,68,.3);color:var(--danger);font-size:11px;padding:5px 10px;border-radius:20px;cursor:pointer;font-family:inherit}
+.photo-prompt{margin-top:10px;padding:10px;background:rgba(255,215,0,.1);border:1px solid rgba(255,215,0,.3);border-radius:10px;display:none}
+.photo-prompt p{font-size:12px;color:var(--gold);margin-bottom:8px}
+.btn-photo{background:linear-gradient(135deg,rgba(123,47,255,.5),rgba(255,45,120,.5));border:1px solid var(--bp);color:#fff;font-size:12px;font-weight:700;padding:8px 14px;border-radius:10px;cursor:pointer;font-family:inherit;width:100%}
+
+/* ══ FIX 2: HOME BUTTON — smaller, no overlap ══ */
+.home-btns{display:flex;gap:10px;padding:0 12px;margin-bottom:20px}
+.btn-go-wishes{
+  flex:1;
+  background:linear-gradient(135deg,#7b2fff,#ff2d78);
+  color:#fff;
+  font-weight:700;
+  font-size:12px;
+  border:none;
+  padding:10px 12px;
+  border-radius:12px;
+  cursor:pointer;
+  font-family:inherit;
+  box-shadow:0 4px 20px rgba(123,47,255,.4);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px
+}
+
+/* ── WISHES PAGE ── */
+#pageWishes{position:relative;z-index:5;display:none}
+.wishes-header{padding:10px 12px;display:flex;align-items:center;gap:8px}
+.wishes-title{font-size:16px;font-weight:800;color:var(--gold)}
+
+/* ── POST FORM ── */
+.psec{margin:0 12px 12px;background:var(--card);border:1px solid rgba(255,45,120,.4);border-radius:16px;padding:14px}
+.ptabs{display:flex;gap:6px;margin-bottom:12px}
+.ptab{flex:1;text-align:center;padding:8px 4px;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:var(--sub);transition:all .2s}
+.ptab.on{background:linear-gradient(135deg,rgba(123,47,255,.3),rgba(255,45,120,.3));border-color:var(--pink);color:#fff}
+.ptxt{width:100%;background:rgba(255,255,255,.07);border:1px solid var(--bp);color:#fff;font-size:13px;padding:11px 12px;border-radius:10px;font-family:inherit;outline:none;resize:none;height:90px}
+.ptxt:focus{border-color:var(--cyan)}
+.upzone{display:none;border:2px dashed var(--bp);border-radius:12px;padding:20px;text-align:center;cursor:pointer;margin-bottom:8px}
+.upzone input{display:none}
+.fprev{display:none;margin-bottom:10px;border-radius:10px;overflow:hidden;background:#000}
+.fprev img{width:100%;max-height:200px;object-fit:contain;display:block}
+.fprev video{width:100%;max-height:200px;display:block}
+.btn-send{width:100%;margin-top:10px;background:linear-gradient(135deg,#7b2fff,#ff2d78);color:#fff;font-weight:700;font-size:14px;border:none;padding:13px;border-radius:12px;cursor:pointer;font-family:inherit;box-shadow:0 4px 20px rgba(123,47,255,.4)}
+.btn-send:disabled{opacity:.6;cursor:not-allowed}
+
+/* ── FEED ── */
+#wishFeed{padding:0 12px 12px;display:flex;flex-direction:column;gap:12px}
+.loading{text-align:center;padding:30px;color:var(--sub);font-size:13px}
+.empty-state{text-align:center;padding:40px 20px;color:var(--sub);font-size:13px;line-height:2}
+.wcard{background:var(--card);border:1px solid var(--bp);border-radius:16px;overflow:hidden;animation:ci .3s ease}
+@keyframes ci{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.chead{display:flex;align-items:center;gap:10px;padding:12px 14px 10px}
+.cav{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;flex-shrink:0;overflow:hidden;border:2px solid var(--purple)}
+.cinfo{flex:1;min-width:0}
+.cname{font-size:13px;font-weight:700;color:var(--green)}
+.cmeta{display:flex;align-items:center;gap:6px;margin-top:2px}
+.ctime{font-size:10px;color:var(--sub)}
+.ctbadge{font-size:9px;font-weight:700;padding:2px 8px;border-radius:8px;text-transform:uppercase}
+.bt{background:rgba(0,229,255,.15);color:#00e5ff;border:1px solid rgba(0,229,255,.3)}
+.bi{background:rgba(100,255,150,.15);color:#86efac;border:1px solid rgba(100,255,150,.3)}
+.bv{background:rgba(255,45,120,.15);color:#ff79a8;border:1px solid rgba(255,45,120,.3)}
+.cbody{padding:0 14px 10px}
+.ctxt{font-size:14px;line-height:1.65;color:#eee;margin-bottom:8px}
+.cmedia{border-radius:12px;overflow:hidden;background:#000;cursor:pointer}
+.cmedia img{width:100%;max-height:260px;object-fit:cover;display:block}
+.cact{display:flex;align-items:center;gap:8px;padding:10px 14px 12px;border-top:1px solid rgba(255,255,255,.06)}
+.btn-like{display:flex;align-items:center;gap:5px;background:rgba(255,45,120,.12);border:1px solid rgba(255,45,120,.35);color:#ff79a8;font-size:13px;font-weight:700;padding:7px 14px;border-radius:20px;cursor:pointer;font-family:inherit;flex-shrink:0}
+.btn-like.liked{background:rgba(255,45,120,.3);border-color:var(--pink);color:var(--pink)}
+.lktxt{flex:1;font-size:11px;color:var(--sub)}
+.btn-del{background:rgba(255,68,68,.12);border:1px solid rgba(255,68,68,.3);color:var(--danger);font-size:18px;padding:6px 10px;border-radius:20px;cursor:pointer;font-family:inherit;line-height:1}
+
+/* ── FULLSCREEN VIEWER ── */
+#mediaViewer{display:none;position:fixed;inset:0;background:rgba(0,0,0,.97);z-index:500;flex-direction:column;align-items:center;justify-content:center;gap:12px}
+#mediaViewer.open{display:flex}
+#mediaViewer img{max-width:98%;max-height:88vh;object-fit:contain;border-radius:4px}
+#mediaViewer video{max-width:98%;max-height:88vh;border-radius:4px}
+.mv-close{position:absolute;top:16px;right:16px;background:rgba(255,255,255,.2);border:none;color:#fff;font-size:20px;width:38px;height:38px;border-radius:50%;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center}
+
+/* ── MODALS ── */
+.ovl{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:100;overflow-y:auto;padding:16px}
+.ovl.show{display:block}
+.modal{background:linear-gradient(135deg,#0f0025,#1a003a);border:1.5px solid var(--bp);border-radius:20px;padding:22px;width:100%;max-width:460px;margin:auto;box-shadow:0 0 40px rgba(123,47,255,.4)}
+.mhd{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.mtitle{font-size:18px;font-weight:800;background:linear-gradient(135deg,#ffd700,#ff2d78);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.btn-close{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:16px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center}
+.mlbl{font-size:12px;color:var(--sub);font-weight:600;margin-bottom:6px;display:block}
+.mf{margin-bottom:14px}
+.mi{width:100%;background:rgba(255,255,255,.08);border:1px solid var(--bp);color:#fff;font-size:13px;padding:11px 13px;border-radius:10px;font-family:inherit;outline:none}
+.mi:focus{border-color:var(--cyan)}
+.mup{width:100%;border:2px dashed var(--bp);border-radius:12px;padding:16px;text-align:center;cursor:pointer;background:rgba(255,255,255,.03)}
+.mup input{display:none}
+.mpimg,.mpvid{width:100%;border-radius:10px;margin-top:10px;display:none;max-height:140px;object-fit:cover;background:#000}
+.btn-msave{width:100%;background:linear-gradient(135deg,#7b2fff,#ff2d78);color:#fff;font-weight:700;font-size:14px;border:none;padding:13px;border-radius:12px;cursor:pointer;font-family:inherit;margin-top:14px}
+.btn-msave:disabled{opacity:.6}
+
+.aev-item{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;margin-bottom:8px}
+.ev-link-row{display:flex;align-items:center;gap:8px;background:rgba(0,229,255,.08);border:1px solid rgba(0,229,255,.2);border-radius:8px;padding:8px 10px}
+.ev-link-txt{flex:1;font-size:10px;color:var(--cyan);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.btn-copy{background:linear-gradient(135deg,#7b2fff,#ff2d78);border:none;color:#fff;font-size:10px;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;font-family:inherit;flex-shrink:0}
+.btn-aev-sel{background:rgba(123,47,255,.3);border:1px solid var(--bp);color:#fff;font-size:11px;padding:4px 10px;border-radius:7px;cursor:pointer;font-family:inherit}
+.btn-aev-del{background:rgba(255,68,68,.2);border:1px solid rgba(255,68,68,.4);color:var(--danger);font-size:11px;padding:4px 10px;border-radius:7px;cursor:pointer;font-family:inherit}
+.btn-danger{width:100%;background:rgba(255,68,68,.15);border:1px solid rgba(255,68,68,.3);color:var(--danger);font-size:13px;font-weight:700;padding:11px;border-radius:12px;cursor:pointer;font-family:inherit;margin-top:8px}
+
+.link-box{background:rgba(0,229,255,.08);border:1px solid rgba(0,229,255,.3);border-radius:12px;padding:14px;margin:14px 0;word-break:break-all;font-size:12px;color:var(--cyan);line-height:1.6}
+.btn-wa{width:100%;background:linear-gradient(135deg,#25D366,#128C7E);color:#fff;font-weight:700;font-size:14px;border:none;padding:13px;border-radius:12px;cursor:pointer;font-family:inherit;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:8px}
+
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(80px);background:linear-gradient(135deg,#7b2fff,#ff2d78);color:#fff;font-weight:700;font-size:13px;padding:12px 22px;border-radius:30px;z-index:400;transition:transform .3s;white-space:nowrap;pointer-events:none}
+.toast.show{transform:translateX(-50%) translateY(0)}
+
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-thumb{background:rgba(123,47,255,.4);border-radius:2px}
+</style>
+</head>
+<body>
+
+<canvas id="confettiCanvas"></canvas>
+
+<!-- BANNER -->
+<div id="bannerWrap">
+  <div class="banner-ph"><span>🌺</span><p>Company Banner — Admin से अपलोड करें</p></div>
+</div>
+
+<!-- HEADER -->
+<div class="hdr">
+  <div><div class="logo">🎉 E-Wishes Desk</div><div class="logo-s">ई-विशेज़ डेस्क • Digital Greetings Hub</div></div>
+  <button class="btn-admin" onclick="openAdminLogin()">👑 Admin</button>
+</div>
+
+<!-- EVENT TABS -->
+<div id="evTabs"></div>
+
+<!-- ══ PAGE 1: HOME ══ -->
+<div id="pageHome">
+
+  <!-- Event Hero -->
+  <div class="ev-hero">
+    <div id="evMediaWrap">
+      <div class="ev-ph"><div class="ph-icon">🌸</div><p>Admin फोटो/वीडियो अपलोड करें</p></div>
+    </div>
+    <div class="ev-info">
+      <div class="ev-badge">🌟 <span id="evType">Event</span></div>
+      <div class="ev-title" id="evTitle">इवेंट का नाम यहाँ दिखेगा</div>
+      <div class="ev-desc" id="evDesc">Admin पैनल से Event सेट करें</div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div id="statsWrap" style="display:none">
+    <div class="sbox"><div class="n" id="stAll">0</div><span class="l">💬 सभी</span></div>
+    <div class="sbox"><div class="n" id="stTxt">0</div><span class="l">✍️ Text</span></div>
+    <div class="sbox"><div class="n" id="stImg">0</div><span class="l">🖼 Image</span></div>
+    <div class="sbox"><div class="n" id="stVid">0</div><span class="l">🎥 Video</span></div>
+  </div>
+
+  <!-- User Section -->
+  <div class="usec">
+    <div id="loginWrap">
+      <div class="sec-title">📱 WhatsApp नंबर डालें — सिर्फ एक बार!</div>
+      <div class="iw"><span class="ico">📱</span>
+        <input class="inp" type="tel" id="inpWA" placeholder="10 अंक का WhatsApp नंबर" maxlength="10" pattern="[0-9]*" onkeypress="if(event.key==='Enter')doLogin()">
+      </div>
+      <button class="btn-login" onclick="doLogin()">✅ बधाई देने जाएं</button>
+    </div>
+    <div class="ubar" id="userBarWrap" style="display:none">
+      <div class="uav" id="userAv"></div>
+      <div class="uinfo">
+        <div class="uname2">📱 <span id="userWADisp"></span></div>
+        <div class="uwa2">✅ Connected</div>
+      </div>
+      <button class="btn-out" onclick="doLogout()">बदलें</button>
+    </div>
+    <div class="photo-prompt" id="photoPrompt">
+      <p>🌸 अपनी पहचान के लिए फोटो लगाएं (वैकल्पिक)</p>
+      <button class="btn-photo" onclick="document.getElementById('userPhotoInp').click()">📷 फोटो चुनें</button>
+      <input type="file" id="userPhotoInp" accept="image/*" style="display:none" onchange="onUserPhoto(this)">
+    </div>
+  </div>
+
+  <!-- FIX 2: Action Button — smaller size -->
+  <div class="home-btns">
+    <button class="btn-go-wishes" onclick="goWishes()">🎉 बधाई देखें & भेजें</button>
+  </div>
+
+</div>
+
+<!-- ══ PAGE 2: WISHES ══ -->
+<div id="pageWishes">
+
+  <!-- Post Form -->
+  <div class="psec">
+    <div class="sec-title" style="margin-bottom:10px">✍️ अपनी बधाई भेजें</div>
+    <div class="ptabs">
+      <button class="ptab on" onclick="setPType('text',this)">✍️ Text</button>
+      <button class="ptab" onclick="setPType('image',this)">🖼 Image</button>
+      <button class="ptab" onclick="setPType('video',this)">🎥 Video</button>
+    </div>
+    <div id="txtArea"><textarea class="ptxt" id="ptxt" placeholder="यहाँ अपनी बधाई लिखें... 🎉🎂🌸💐"></textarea></div>
+    <div class="upzone" id="upzone" onclick="document.getElementById('finp').click()">
+      <div style="font-size:30px;margin-bottom:6px" id="uic">🖼</div>
+      <p style="font-size:12px;color:var(--sub)" id="uhint">फोटो चुनें</p>
+      <input type="file" id="finp" accept="image/*" onchange="onFile(this)">
+    </div>
+    <div class="fprev" id="fprev">
+      <img id="pimg" src="" alt="" style="display:none">
+      <video id="pvid" controls playsinline style="display:none;width:100%;max-height:200px;background:#000;"></video>
+    </div>
+    <button class="btn-send" id="btnSend" onclick="submitPost()">🎉 बधाई भेजें</button>
+  </div>
+
+  <!-- Wishes Feed -->
+  <div id="wishFeed">
+    <div class="empty-state">🌸🌼🌺<br><br>अभी कोई बधाई नहीं है<br>पहले बधाई देने वाले आप बनें!</div>
+  </div>
+
+</div>
+
+<!-- BOTTOM NAV -->
+<div class="bottom-nav">
+  <button class="nav-btn on" id="navHome" onclick="goHome()">
+    <span class="ni">🏠</span><span>Home</span>
+  </button>
+  <button class="nav-btn" id="navWishes" onclick="goWishes()">
+    <span class="ni">🎉</span><span>बधाइयाँ</span>
+  </button>
+</div>
+
+<!-- FULLSCREEN MEDIA VIEWER -->
+<div id="mediaViewer">
+  <button class="mv-close" onclick="closeMediaViewer()">✕</button>
+  <img id="mvImg" src="" style="display:none">
+  <video id="mvVid" controls playsinline style="display:none;width:98%;max-height:88vh;"></video>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- ADMIN LOGIN -->
+<div class="ovl" id="ovlLogin">
+  <div class="modal" style="max-width:340px">
+    <div class="mhd"><div class="mtitle">⚙️ Admin Login</div><button class="btn-close" onclick="closeOvl('ovlLogin')">✕</button></div>
+    <div class="mf"><span class="mlbl">Password</span>
+      <input class="mi" type="password" id="apass" placeholder="Admin password..." onkeypress="if(event.key==='Enter')chkPass()">
+    </div>
+    <button class="btn-msave" onclick="chkPass()">🔓 Login करें</button>
+  </div>
+</div>
+
+<!-- ADMIN PANEL -->
+<div class="ovl" id="ovlAdmin">
+  <div class="modal">
+    <div class="mhd"><div class="mtitle">⚙️ Admin Panel</div><button class="btn-close" onclick="closeOvl('ovlAdmin')">✕</button></div>
+    <div class="mf">
+      <span class="mlbl">🏢 Company Banner (16:9)</span>
+      <div class="mup" onclick="document.getElementById('aBannerInp').click()">
+        <div style="font-size:24px;margin-bottom:6px">🌺</div>
+        <div style="font-size:12px;color:var(--sub)">Banner Image या Video चुनें</div>
+        <input type="file" id="aBannerInp" accept="image/*,video/*" onchange="onAdminBanner(this)">
+      </div>
+      <img id="aBannerPrev" style="width:100%;border-radius:10px;margin-top:8px;display:none;max-height:100px;object-fit:cover">
+    </div>
+    <div class="mf">
+      <span class="mlbl">📅 Events — हर Event का अलग Link</span>
+      <div id="adminEvList" style="max-height:200px;overflow-y:auto;margin-bottom:8px"></div>
+      <button class="btn-msave" style="margin-top:0;font-size:12px;padding:10px" onclick="openNewEvModal()">➕ नया Event जोड़ें</button>
+    </div>
+    <div class="mf">
+      <span class="mlbl">🗑️ Current Event की बधाइयाँ हटाएं</span>
+      <button class="btn-danger" onclick="adminClearWishes()">🗑️ सभी बधाइयाँ हटाएं</button>
+    </div>
+  </div>
+</div>
+
+<!-- NEW/EDIT EVENT -->
+<div class="ovl" id="ovlEvent">
+  <div class="modal">
+    <div class="mhd"><div class="mtitle" id="evModalTitle">➕ नया Event</div><button class="btn-close" onclick="closeOvl('ovlEvent')">✕</button></div>
+    <input type="hidden" id="aeId">
+    <div class="mf"><span class="mlbl">🎉 Event का नाम *</span>
+      <input class="mi" type="text" id="aeName" placeholder="जैसे: श्री रामेश्वर जी का जन्मदिन">
+    </div>
+    <div class="mf"><span class="mlbl">🏷️ Event का प्रकार</span>
+      <select class="mi" id="aeType">
+        <option>जन्मदिन 🎂</option>
+        <option>विवाह वर्षगांठ 💍</option>
+        <option>सेवानिवृत्ति 🏅</option>
+        <option>पदोन्नति 🌟</option>
+        <option>अन्य उत्सव 🎊</option>
+      </select>
+    </div>
+    <div class="mf"><span class="mlbl">📝 Description</span>
+      <input class="mi" type="text" id="aeDesc" placeholder="जैसे: आज इनका 50वाँ जन्मदिन है">
+    </div>
+    <div class="mf"><span class="mlbl">📸 Photo / 🎥 Video</span>
+      <div class="mup" onclick="document.getElementById('aeMediaInp').click()">
+        <div style="font-size:24px;margin-bottom:6px">📁</div>
+        <div style="font-size:12px;color:var(--sub)">फोटो या वीडियो चुनें</div>
+        <input type="file" id="aeMediaInp" accept="image/*,video/*" onchange="onEvMedia(this)">
+      </div>
+      <img id="aePrevImg" class="mpimg"><video id="aePrevVid" class="mpvid" controls></video>
+    </div>
+    <button class="btn-msave" id="btnEvSave" onclick="saveEvent()">💾 Event Save करें</button>
+  </div>
+</div>
+
+<!-- LINK MODAL -->
+<div class="ovl" id="ovlLink">
+  <div class="modal" style="max-width:380px">
+    <div class="mhd"><div class="mtitle">🔗 Event Link तैयार!</div><button class="btn-close" onclick="closeOvl('ovlLink')">✕</button></div>
+    <p style="font-size:13px;color:var(--sub);margin-bottom:8px">✅ <strong id="linkEvName" style="color:#fff"></strong> का link तैयार है!</p>
+    <div class="link-box" id="linkURL"></div>
+    <button class="btn-msave" onclick="copyEventLink()">📋 Link Copy करें</button>
+    <button class="btn-wa" onclick="shareOnWhatsApp()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+      WhatsApp पर Share करें
+    </button>
+  </div>
+</div>
+
+</body>
+</html>
