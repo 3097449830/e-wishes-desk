@@ -177,14 +177,14 @@ body::before{
 #evTabs::-webkit-scrollbar{display:none}
 .ev-tab{
   flex:1;
-  height:34px;
-  padding:0 6px;border-radius:20px;
+  height:36px;
+  padding:0 4px;border-radius:20px;
   font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;
-  background:rgba(123,47,255,.15);border:1.5px solid rgba(123,47,255,.4);
-  color:rgba(255,255,255,.7);transition:all .2s;
+  background:rgba(0,229,255,.08);border:2px solid rgba(0,229,255,.35);
+  color:var(--cyan);transition:all .2s;
   display:flex;align-items:center;justify-content:center;
   text-align:center;overflow:hidden;white-space:nowrap;
-  text-overflow:ellipsis;min-width:0;
+  text-overflow:ellipsis;min-width:0;box-sizing:border-box;
 }
 .ev-tab.on{
   background:linear-gradient(135deg,#ff2d78,#7b2fff);
@@ -631,12 +631,12 @@ select.mi option{background:#1a003a}
 
 <div class="hdr">
   <div>
-    <div class="logo">🎉 E-Wishes Desk</div>
+    <div class="logo" id="logoTap" onclick="handleLogoTap()">🎉 E-Wishes Desk</div>
     <div class="logo-s">ई-विशेज़ डेस्क • Digital Greetings Hub</div>
   </div>
   <div class="hdr-btns">
-    <button id="adminLogoutBtn" onclick="adminLogout()">🔒 Logout</button>
-    <button class="btn-hdr" onclick="openAdminLogin()">👑 Admin</button>
+    <button id="adminLogoutBtn" onclick="adminLogout()" style="display:none">🔒 Logout</button>
+    <button class="btn-hdr" id="adminLoginBtn" onclick="openAdminLogin()" style="display:none">👑 Admin</button>
   </div>
 </div>
 
@@ -672,6 +672,16 @@ select.mi option{background:#1a003a}
         <input class="inp" type="tel" id="inpWA" placeholder="10 अंक का WhatsApp नंबर"
           maxlength="10" pattern="[0-9]*"
           onkeypress="if(event.key==='Enter')doLogin()">
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <div onclick="document.getElementById('userPhotoInp').click()" 
+          style="width:50px;height:50px;border-radius:50%;border:2px dashed var(--bp);
+          display:flex;align-items:center;justify-content:center;cursor:pointer;
+          background:rgba(123,47,255,.1);flex-shrink:0;overflow:hidden" id="loginPhotoPreview">
+          <span style="font-size:22px">📷</span>
+        </div>
+        <span style="font-size:11px;color:var(--sub)">फोटो लगाएं (वैकल्पिक)</span>
+        <input type="file" id="userPhotoInp" accept="image/*" style="display:none" onchange="onUserPhoto(this)">
       </div>
       <button class="btn-primary" onclick="doLogin()">✅ बधाई देने जाएं</button>
     </div>
@@ -1117,6 +1127,12 @@ window.doLogout = doLogout;
 
 async function onUserPhoto(inp){
   const file = inp.files[0]; if(!file) return;
+  // Login form preview
+  const prev=$('loginPhotoPreview');
+  if(prev){
+    const localUrl=URL.createObjectURL(file);
+    prev.innerHTML=`<img src="${localUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+  }
   showToast('⏳ फोटो upload हो रही है...');
   try{
     const compressed = await compressAvatar(file);
@@ -1723,9 +1739,26 @@ function closeMediaViewer(){
 window.openMediaViewer=openMediaViewer;
 window.closeMediaViewer=closeMediaViewer;
 
+// Logo triple tap for admin access
+let _logoTaps=0, _logoTimer=null;
+function handleLogoTap(){
+  _logoTaps++;
+  clearTimeout(_logoTimer);
+  if(_logoTaps>=3){
+    _logoTaps=0;
+    $('adminLoginBtn').style.display='inline-block';
+    setTimeout(()=>{
+      if(!ST.isAdmin) $('adminLoginBtn').style.display='none';
+    },5000);
+  }
+  _logoTimer=setTimeout(()=>{ _logoTaps=0; },800);
+}
+window.handleLogoTap=handleLogoTap;
+
 function setAdminMode(on){
   ST.isAdmin=on;
   $('adminLogoutBtn').style.display=on?'inline-block':'none';
+  $('adminLoginBtn').style.display=on?'none':'none';
   updateAdminCursors();
 }
 
@@ -1800,7 +1833,7 @@ function renderAdminEventList(){
       <div class="aev-btns">
         <button class="btn-aev" onclick="editEvModal('${ev.id}')">✏️ Edit</button>
         <button class="btn-aev-del" onclick="deleteEv('${ev.id}')">🗑️ Delete</button>
-        <button class="btn-aev" style="background:linear-gradient(135deg,#25D366,#128C7E);border-color:#25D366;color:#fff;"
+        <button class="btn-aev" style="background:#25D366;border:2px solid #128C7E;color:#fff;font-weight:800;"
           onclick="shareEvWA('${ev.id}')">📲 WA Share</button>
       </div>`;
     list.appendChild(d);
