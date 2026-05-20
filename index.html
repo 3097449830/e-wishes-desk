@@ -1563,16 +1563,21 @@ function setPType(t, el){
 }
 window.setPType=setPType;
 
-// ── FIX 1: onFile — instant preview via URL.createObjectURL ──
+// ── onFile — instant preview, no size rejection ──
 function onFile(inp){
   const file=inp.files[0]; if(!file) return;
   const isVid=file.type.startsWith('video');
 
-  if(isVid&&file.size>15*1024*1024){ showToast('⚠️ Video 15MB से छोटी होनी चाहिए'); inp.value=''; return; }
-  if(!isVid&&file.size>5*1024*1024){ showToast('⚠️ Photo 5MB से छोटी होनी चाहिए'); inp.value=''; return; }
+  // Image: 20MB limit (Cloudinary compress करेगा)
+  if(!isVid&&file.size>20*1024*1024){
+    showToast('⚠️ Photo 20MB से छोटी होनी चाहिए'); inp.value=''; return;
+  }
+  // Video: 100MB limit — Cloudinary compress करेगा
+  if(isVid&&file.size>100*1024*1024){
+    showToast('⚠️ Video बहुत बड़ी है'); inp.value=''; return;
+  }
 
   if(isVid){
-    // FIX 1: Instant local URL — कोई FileReader नहीं
     const localURL = URL.createObjectURL(file);
     const vid = document.createElement('video');
     vid.preload='metadata';
@@ -1582,7 +1587,7 @@ function onFile(inp){
         showToast('⚠️ Video 30 सेकंड से छोटी होनी चाहिए!');
         inp.value=''; return;
       }
-      // Duration check pass — instant preview दिखाओ
+      // ✅ Duration OK — instant preview
       pFile=file; pFileType='video'; pLocalURL=localURL;
       $('fprev').style.display='block';
       $('upzone').style.display='none';
@@ -1633,17 +1638,28 @@ async function submitPost(){
     let mediaURL=null;
     const actualType = pFile ? pFileType : 'text';
 
-    // Step 1: अगर file है — पहले upload complete करो
+    // Step 1: अगर file है — upload करो
     if(pFile){
-      showToast('⏳ Upload हो रहा है...');
-      const fileToUpload = pFileType==='image'
-        ? await compressImage(pFile)
-        : pFile;
-
-      mediaURL = await uploadToCloudinary(fileToUpload,'wishes', pct=>{
-        showProgress(pct);
-      });
-      // Upload done — URL valid है
+      if(pFileType==='video'){
+        showToast('⏳ Video upload हो रही है...');
+        // Video: directly Cloudinary पर — server-side compress होगा
+        mediaURL = await uploadToCloudinary(pFile,'wishes', pct=>{
+          showProgress(pct);
+          const pt=$('uploadProgressTxt');
+          if(pt){
+            pt.style.display='block';
+            pt.textContent = pct<100 ? `⏳ Upload: ${pct}%` : '✅ Upload complete!';
+          }
+        });
+      } else {
+        showToast('⏳ Photo upload हो रही है...');
+        // Image: compress करो फिर upload
+        const compressed = await compressImage(pFile);
+        mediaURL = await uploadToCloudinary(compressed,'wishes', pct=>{
+          showProgress(pct);
+        });
+      }
+      // Upload done — real Cloudinary URL मिला
     }
 
     // Step 2: Upload complete होने के बाद ही Firebase में save करो
