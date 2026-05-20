@@ -176,16 +176,15 @@ body::before{
 }
 #evTabs::-webkit-scrollbar{display:none}
 .ev-tab{
-  flex-shrink:0;
-  width:110px;min-width:110px;max-width:110px;
-  height:36px;
-  padding:0 8px;border-radius:20px;
+  flex:1;
+  height:34px;
+  padding:0 6px;border-radius:20px;
   font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;
   background:rgba(123,47,255,.15);border:1.5px solid rgba(123,47,255,.4);
   color:rgba(255,255,255,.7);transition:all .2s;
   display:flex;align-items:center;justify-content:center;
   text-align:center;overflow:hidden;white-space:nowrap;
-  text-overflow:ellipsis;
+  text-overflow:ellipsis;min-width:0;
 }
 .ev-tab.on{
   background:linear-gradient(135deg,#ff2d78,#7b2fff);
@@ -677,7 +676,10 @@ select.mi option{background:#1a003a}
       <button class="btn-primary" onclick="doLogin()">✅ बधाई देने जाएं</button>
     </div>
     <div class="ubar" id="userBarWrap" style="display:none">
-      <div class="uav" id="userAv"></div>
+      <div style="position:relative;flex-shrink:0" onclick="document.getElementById('userPhotoInp').click()">
+        <div class="uav" id="userAv"></div>
+        <div style="position:absolute;bottom:0;right:0;background:var(--purple);border-radius:50%;width:16px;height:16px;display:flex;align-items:center;justify-content:center;font-size:9px;border:1px solid #fff">📷</div>
+      </div>
       <div class="uinfo">
         <div class="uname" id="userNameDisp"></div>
         <div class="uwa">📱 <span id="userWADisp"></span> &nbsp;✅</div>
@@ -1798,7 +1800,7 @@ function renderAdminEventList(){
       <div class="aev-btns">
         <button class="btn-aev" onclick="editEvModal('${ev.id}')">✏️ Edit</button>
         <button class="btn-aev-del" onclick="deleteEv('${ev.id}')">🗑️ Delete</button>
-        <button class="btn-aev" style="background:rgba(37,211,102,.2);border-color:rgba(37,211,102,.4)"
+        <button class="btn-aev" style="background:linear-gradient(135deg,#25D366,#128C7E);border-color:#25D366;color:#fff;"
           onclick="shareEvWA('${ev.id}')">📲 WA Share</button>
       </div>`;
     list.appendChild(d);
