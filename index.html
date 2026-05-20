@@ -2085,23 +2085,23 @@ window.addEventListener('DOMContentLoaded', async ()=>{
 </script>
 
 <script>
-// ── SERVICE WORKER — Auto update on new deployment ──
+// ── SERVICE WORKER — Instant update on every deploy ──
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('/e-wishes-desk/sw.js')
     .then(reg => {
-      // नया version available हो तो check करो
+      // हर बार page load पर update check करो
+      reg.update();
       reg.addEventListener('updatefound', () => {
         const newWorker = reg.installing;
         newWorker.addEventListener('statechange', () => {
-          if(newWorker.state === 'installed' && navigator.serviceWorker.controller){
-            // नया version आया — automatically reload
+          if(newWorker.state === 'installed'){
+            // नया version — तुरंत activate करो
             newWorker.postMessage({action: 'skipWaiting'});
           }
         });
       });
     }).catch(()=>{});
 
-  // Controller change होने पर reload
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     window.location.reload();
   });
