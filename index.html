@@ -597,13 +597,7 @@ select.mi option{background:#1a003a}
 .hint-box li{font-size:11px;color:var(--sub);line-height:2;list-style:none;padding:0}
 
 /* FIX 2: Optimistic card style */
-.wcard.uploading{opacity:0.7;border-color:var(--cyan);}
-.wcard.uploading::after{
-  content:'⏳ Upload हो रहा है...';
-  display:block;text-align:center;
-  font-size:11px;color:var(--cyan);
-  padding:6px;border-top:1px solid rgba(0,229,255,.2);
-}
+
 
 ::-webkit-scrollbar{width:3px}
 ::-webkit-scrollbar-thumb{background:rgba(123,47,255,.4);border-radius:2px}
@@ -707,10 +701,10 @@ select.mi option{background:#1a003a}
 
     <textarea class="ptxt" id="ptxt" placeholder="यहाँ अपनी बधाई लिखें... 🎉🌸💐"></textarea>
 
-    <div class="upzone" id="upzone" onclick="document.getElementById('finp').click()">
+    <div class="upzone" id="upzone" onclick="triggerFilePicker()">
       <div style="font-size:28px;margin-bottom:6px" id="uic">🖼</div>
       <p style="font-size:12px;color:var(--sub)" id="uhint">Photo चुनें (max 5MB)</p>
-      <input type="file" id="finp" accept="image/*" onchange="onFile(this)">
+      <input type="file" id="finp" accept="image/*" onchange="onFile(this)" style="display:none">
     </div>
 
     <div class="fprev" id="fprev">
@@ -1525,6 +1519,16 @@ window.doDelete=doDelete;
 // ── FIX 1 & 2: पूरा updated file/submit system ──
 let pType='text', pFile=null, pFileType=null, pLocalURL=null;
 
+// ── FIX 1: Single file picker trigger with debounce ──
+let _pickerBusy = false;
+function triggerFilePicker(){
+  if(_pickerBusy) return;
+  _pickerBusy = true;
+  document.getElementById('finp').click();
+  setTimeout(()=>{ _pickerBusy = false; }, 1000);
+}
+window.triggerFilePicker = triggerFilePicker;
+
 function setPType(t, el){
   pType=t;
   document.querySelectorAll('.ptab').forEach(x=>x.classList.remove('on'));
@@ -1614,7 +1618,7 @@ function removeFile(){
 }
 window.removeFile=removeFile;
 
-// ── FIX 2: submitPost — optimistic UI, background upload ──
+// ── FIXED submitPost — strict flow, no fake success, no blob in Firebase ──
 async function submitPost(){
   if(!ST.user){ showToast('⚠️ पहले अपना नंबर डालें'); return; }
   if(!ST.curEventId){ showToast('⚠️ कोई Event नहीं है'); return; }
@@ -1623,90 +1627,51 @@ async function submitPost(){
 
   const btn=$('btnSend');
   btn.disabled=true; btn.textContent='⏳ भेज रहे हैं...';
-
-  // FIX 2A: अगर सिर्फ text है — तुरंत save करो, कोई wait नहीं
-  if(!pFile){
-    try{
-      await addDoc(collection(db,'wishes'),{
-        eventId:ST.curEventId,
-        wa:ST.user.wa,
-        senderName:ST.user.name||'',
-        text:txt,
-        mediaURL:null,
-        type:'text',
-        likes:[],
-        createdAt:serverTimestamp(),
-      });
-      $('ptxt').value='';
-      playSuccessSound(); launchConfetti();
-      showToast('🎉 बधाई भेज दी गई! 🌸');
-      setTimeout(()=>$('wishFeed').scrollIntoView({behavior:'smooth'}),400);
-    }catch(e){
-      showToast('⚠️ Error: '+e.message);
-    }finally{
-      btn.disabled=false; btn.textContent='🎉 बधाई भेजें';
-    }
-    return;
-  }
-
-  // FIX 2B: File है — पहले text save करो with placeholder, background में upload
   showProgress(0);
-  showToast('⏳ Upload हो रहा है, आप scroll कर सकते हैं...');
 
-  // Step 1: Firebase में placeholder डालो (local preview के साथ)
-  let docRef = null;
   try{
-    docRef = await addDoc(collection(db,'wishes'),{
-      eventId:ST.curEventId,
-      wa:ST.user.wa,
-      senderName:ST.user.name||'',
-      text:txt,
-      mediaURL: pLocalURL, // local URL temporarily
-      type: pFileType,
-      likes:[],
-      createdAt:serverTimestamp(),
-      uploading: true,
+    let mediaURL=null;
+    const actualType = pFile ? pFileType : 'text';
+
+    // Step 1: अगर file है — पहले upload complete करो
+    if(pFile){
+      showToast('⏳ Upload हो रहा है...');
+      const fileToUpload = pFileType==='image'
+        ? await compressImage(pFile)
+        : pFile;
+
+      mediaURL = await uploadToCloudinary(fileToUpload,'wishes', pct=>{
+        showProgress(pct);
+      });
+      // Upload done — URL valid है
+    }
+
+    // Step 2: Upload complete होने के बाद ही Firebase में save करो
+    await addDoc(collection(db,'wishes'),{
+      eventId: ST.curEventId,
+      wa: ST.user.wa,
+      senderName: ST.user.name||'',
+      text: txt,
+      mediaURL: mediaURL,  // सिर्फ real Cloudinary URL — कोई blob नहीं
+      type: actualType,
+      likes: [],
+      createdAt: serverTimestamp(),
     });
+
+    // Step 3: सब successful — अब reset और success दिखाओ
+    $('ptxt').value='';
+    removeFile();
+    showProgress(null);
+    setPType('text',$('tabText'));
+    playSuccessSound(); launchConfetti();
+    showToast('🎉 बधाई भेज दी गई! 🌸');
+    setTimeout(()=>$('wishFeed').scrollIntoView({behavior:'smooth'}),400);
+
   }catch(e){
     showToast('⚠️ Error: '+e.message);
+    showProgress(null);
+  }finally{
     btn.disabled=false; btn.textContent='🎉 बधाई भेजें';
-    showProgress(null);
-    return;
-  }
-
-  // UI reset करो — user और बधाइयाँ दे सकता है
-  const savedFile = pFile;
-  const savedFileType = pFileType;
-  $('ptxt').value='';
-  removeFile();
-  btn.disabled=false; btn.textContent='🎉 बधाई भेजें';
-  playSuccessSound(); launchConfetti();
-  showToast('🎉 बधाई feed में आ गई! Upload जारी है...');
-  setTimeout(()=>$('wishFeed').scrollIntoView({behavior:'smooth'}),400);
-
-  // Step 2: Background में Cloudinary upload
-  try{
-    const fileToUpload = savedFileType==='image'
-      ? await compressImage(savedFile)
-      : savedFile;
-
-    const realURL = await uploadToCloudinary(fileToUpload,'wishes', pct=>{
-      showProgress(pct);
-    });
-
-    // Step 3: Firebase में real URL update करो
-    await setDoc(doc(db,'wishes',docRef.id),{
-      mediaURL: realURL,
-      uploading: false,
-    },{merge:true});
-
-    showProgress(null);
-    showToast('✅ Upload complete! 🎉');
-  }catch(e){
-    // Upload fail हो तो document हटाओ
-    try{ await deleteDoc(doc(db,'wishes',docRef.id)); }catch(ex){}
-    showToast('⚠️ Upload failed: '+e.message);
-    showProgress(null);
   }
 }
 window.submitPost=submitPost;
