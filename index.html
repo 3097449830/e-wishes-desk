@@ -13,16 +13,14 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700;900&family=Poppins:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 
-<!-- ═══════════════════════════════════════════════
-     PWA SETUP — FIX #1: INSTALL PROMPT NEVER REPEATS
-═══════════════════════════════════════════════ -->
 <script>
 (function(){
-  // ── PWA Manifest (inline) ──────────────────────
+  // ── FIX 3: PWA Manifest — GitHub Pages के लिए सही start_url ──
   const icon='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAMAAAD04JH5AAAAA1BMVEUAf/9qlsozAAAAI0lEQVR4nO3BMQEAAADCoPVP7WsIoAAAAAAAAAAAAAAADgYMFgABma77gQAAAABJRU5ErkJggg==';
   const mf={
     name:'E-Wishes Desk',short_name:'E-Wishes',
-    start_url:window.location.href.split('?')[0],
+    start_url:'/e-wishes-desk/',
+    scope:'/e-wishes-desk/',
     display:'standalone',
     background_color:'#0a0015',theme_color:'#7b2fff',
     icons:[{src:icon,sizes:'192x192',type:'image/png',purpose:'any maskable'}]
@@ -32,11 +30,9 @@
       URL.createObjectURL(new Blob([JSON.stringify(mf)],{type:'application/json'}));
   }catch(e){}
 
-  // ── FIX #1: PWA prompt — एक बार dismiss = FOREVER gone ──
   const PWA_KEY = 'ew4_pwa_dismissed';
   const PWA_INSTALLED = 'ew4_pwa_installed';
 
-  // Already installed check
   if(window.matchMedia('(display-mode: standalone)').matches ||
      window.navigator.standalone === true){
     localStorage.setItem(PWA_INSTALLED,'1');
@@ -46,12 +42,10 @@
 
   window.addEventListener('beforeinstallprompt', e => {
     e.preventDefault();
-    // अगर पहले dismiss या install हो चुका है — prompt दिखाओ ही मत
     if(localStorage.getItem(PWA_KEY) || localStorage.getItem(PWA_INSTALLED)){
       return;
     }
     deferredPrompt = e;
-    // 8 seconds बाद दिखाओ — user को पहले app use करने दो
     setTimeout(() => {
       const btn = document.getElementById('pwaBtn');
       if(btn && deferredPrompt) btn.style.display = 'flex';
@@ -65,7 +59,6 @@
     if(btn) btn.style.display = 'none';
   });
 
-  // Global install function
   window.pwaInstall = function(){
     if(!deferredPrompt) return;
     const btn = document.getElementById('pwaBtn');
@@ -79,9 +72,8 @@
     });
   };
 
-  // FIX #1: Dismiss button — forever hide
   window.pwaDismiss = function(){
-    localStorage.setItem(PWA_KEY,'1'); // NEVER show again
+    localStorage.setItem(PWA_KEY,'1');
     deferredPrompt = null;
     const btn = document.getElementById('pwaBtn');
     if(btn) btn.style.display = 'none';
@@ -89,9 +81,6 @@
 })();
 </script>
 
-<!-- ═══════════════════════════════════════════════
-     STYLES
-═══════════════════════════════════════════════ -->
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 :root{
@@ -115,7 +104,6 @@ body::before{
 }
 #confettiCanvas{position:fixed;inset:0;z-index:999;pointer-events:none}
 
-/* ── SPLASH ── */
 #splashScreen{
   position:fixed;inset:0;z-index:9999;
   display:flex;flex-direction:column;
@@ -150,7 +138,6 @@ body::before{
 .sp-bar{height:100%;width:0;background:linear-gradient(90deg,#7b2fff,#ff2d78,#ffd700);border-radius:10px;animation:spProg 2.8s .3s cubic-bezier(.4,0,.2,1) forwards}
 @keyframes spProg{from{width:0}to{width:100%}}
 
-/* ── BANNER ── */
 #bannerWrap{
   position:relative;width:100%;padding-top:56.25%;
   background:linear-gradient(135deg,#0d0025,#1a0040);
@@ -160,7 +147,6 @@ body::before{
 .banner-ph span{font-size:28px}
 #bannerWrap img,#bannerWrap video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 
-/* ── HEADER ── */
 .hdr{
   position:sticky;top:0;z-index:20;
   display:flex;align-items:center;justify-content:space-between;
@@ -184,7 +170,6 @@ body::before{
   padding:6px 11px;border-radius:20px;cursor:pointer;font-family:inherit;
 }
 
-/* ── EVENT TABS ── */
 #evTabs{
   display:none;gap:8px;padding:10px 12px;
   overflow-x:auto;-webkit-overflow-scrolling:touch;
@@ -202,7 +187,6 @@ body::before{
   box-shadow:0 2px 12px rgba(255,45,120,.35);
 }
 
-/* ── EVENT HERO ── */
 #evHeroContainer{
   position:relative;width:100%;
   height:55vw;min-height:260px;max-height:480px;
@@ -219,7 +203,6 @@ body::before{
 .ph-icon{font-size:44px;animation:gp 2s ease-in-out infinite alternate}
 @keyframes gp{from{filter:drop-shadow(0 0 6px rgba(255,215,0,.3))}to{filter:drop-shadow(0 0 20px rgba(255,215,0,.9))}}
 
-/* Draggable text labels */
 .ev-label{
   position:absolute;z-index:10;
   pointer-events:none;cursor:default;
@@ -258,7 +241,6 @@ body::before{
   box-shadow:0 3px 10px rgba(0,0,0,.5);
 }
 
-/* ── STATS ── */
 #statsWrap{display:none;gap:8px;padding:0 12px 10px}
 .sbox{
   flex:1;text-align:center;background:var(--card);
@@ -271,11 +253,9 @@ body::before{
 }
 .sbox .l{font-size:9px;color:var(--sub);display:block;margin-top:2px}
 
-/* ── SECTION ── */
 .sec{margin:0 12px 10px;background:var(--card);border:1px solid var(--bp);border-radius:var(--radius);padding:14px}
 .sec-title{font-size:13px;font-weight:700;color:var(--cyan);margin-bottom:10px}
 
-/* ── USER BAR ── */
 .iw{position:relative;margin-bottom:8px}
 .iw .ico{position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;pointer-events:none}
 .inp{
@@ -327,7 +307,6 @@ body::before{
   display:flex;align-items:center;justify-content:center;gap:6px;
 }
 
-/* ── BOTTOM NAV ── */
 .bottom-nav{
   position:fixed;bottom:0;left:0;right:0;z-index:30;
   display:flex;
@@ -347,7 +326,6 @@ body::before{
 .nav-btn.on{color:var(--gold)}
 .nav-btn.on .ni{filter:drop-shadow(0 0 6px var(--gold))}
 
-/* ── POST SECTION ── */
 .ptabs{display:flex;gap:6px;margin-bottom:12px}
 .ptab{
   flex:1;text-align:center;padding:8px 4px;
@@ -383,7 +361,6 @@ body::before{
   cursor:pointer;display:flex;align-items:center;justify-content:center;
 }
 
-/* ── PROGRESS BAR ── */
 #uploadProgress{
   display:none;margin:8px 0;
   background:rgba(255,255,255,.08);border-radius:8px;overflow:hidden;height:6px;
@@ -398,7 +375,6 @@ body::before{
   margin-top:4px;display:none;
 }
 
-/* ── WISH FEED ── */
 #pageWishes{display:none}
 #wishFeed{padding:0 12px 12px;display:flex;flex-direction:column;gap:12px}
 .loading{text-align:center;padding:30px;color:var(--sub);font-size:13px}
@@ -453,7 +429,6 @@ body::before{
   border-radius:20px;cursor:pointer;font-family:inherit;line-height:1;
 }
 
-/* ── MEDIA VIEWER ── */
 #mediaViewer{
   display:none;position:fixed;inset:0;
   background:rgba(0,0,0,.97);z-index:500;
@@ -469,7 +444,6 @@ body::before{
   cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;
 }
 
-/* ── TOAST — above nav ── */
 .toast{
   position:fixed;bottom:88px;left:50%;
   transform:translateX(-50%) translateY(20px);
@@ -484,7 +458,6 @@ body::before{
 }
 .toast.show{transform:translateX(-50%) translateY(0);opacity:1}
 
-/* ── PWA BUTTON — dismiss button added ── */
 #pwaBtn{
   display:none;position:fixed;bottom:88px;left:50%;
   transform:translateX(-50%);z-index:500;
@@ -503,7 +476,6 @@ body::before{
   color:#000;font-size:14px;font-family:inherit;
 }
 
-/* ── MODALS ── */
 .ovl{
   display:none;position:fixed;inset:0;
   background:rgba(0,0,0,.85);z-index:100;
@@ -567,7 +539,6 @@ select.mi option{background:#1a003a}
   border-radius:12px;cursor:pointer;font-family:inherit;margin-top:8px;
 }
 
-/* Admin tabs */
 .admin-tabs{display:flex;gap:6px;margin-bottom:14px;overflow-x:auto}
 .admin-tab-btn{
   flex-shrink:0;padding:6px 13px;border-radius:20px;
@@ -625,6 +596,15 @@ select.mi option{background:#1a003a}
 .hint-box p{font-size:12px;color:var(--gold);font-weight:700;margin-bottom:6px}
 .hint-box li{font-size:11px;color:var(--sub);line-height:2;list-style:none;padding:0}
 
+/* FIX 2: Optimistic card style */
+.wcard.uploading{opacity:0.7;border-color:var(--cyan);}
+.wcard.uploading::after{
+  content:'⏳ Upload हो रहा है...';
+  display:block;text-align:center;
+  font-size:11px;color:var(--cyan);
+  padding:6px;border-top:1px solid rgba(0,229,255,.2);
+}
+
 ::-webkit-scrollbar{width:3px}
 ::-webkit-scrollbar-thumb{background:rgba(123,47,255,.4);border-radius:2px}
 </style>
@@ -633,7 +613,6 @@ select.mi option{background:#1a003a}
 
 <canvas id="confettiCanvas"></canvas>
 
-<!-- ═══ SPLASH SCREEN ═══ -->
 <div id="splashScreen">
   <div class="sp-glow"></div>
   <div class="sp-content">
@@ -645,15 +624,12 @@ select.mi option{background:#1a003a}
   </div>
 </div>
 
-<!-- ═══ MAIN APP ═══ -->
 <div id="appContent" style="opacity:0;transition:opacity .4s ease">
 
-<!-- Banner -->
 <div id="bannerWrap">
   <div class="banner-ph"><span>🌺</span><p>Company Banner — Admin से Upload करें</p></div>
 </div>
 
-<!-- Header -->
 <div class="hdr">
   <div>
     <div class="logo">🎉 E-Wishes Desk</div>
@@ -665,24 +641,18 @@ select.mi option{background:#1a003a}
   </div>
 </div>
 
-<!-- Event Tabs -->
 <div id="evTabs"></div>
 
-<!-- HOME PAGE -->
 <div id="pageHome">
-
-  <!-- Event Hero -->
   <div id="evHeroContainer">
     <div id="evMediaWrap">
       <div class="ev-ph"><div class="ph-icon">🌸</div><p style="font-size:12px;color:var(--sub)">Admin फोटो/वीडियो Upload करें</p></div>
     </div>
-    <!-- Draggable text labels -->
     <div class="ev-label ev-badge" id="evBadge">🌟 <span>Event</span></div>
     <div class="ev-label ev-title-lbl" id="evTitle">इवेंट का नाम यहाँ दिखेगा</div>
     <div class="ev-label ev-desc-lbl" id="evDesc">Admin पैनल से Event सेट करें</div>
   </div>
 
-  <!-- Stats -->
   <div id="statsWrap" style="display:none">
     <div class="sbox"><div class="n" id="stAll">0</div><span class="l">💬 सभी</span></div>
     <div class="sbox"><div class="n" id="stTxt">0</div><span class="l">✍️ Text</span></div>
@@ -690,7 +660,6 @@ select.mi option{background:#1a003a}
     <div class="sbox"><div class="n" id="stVid">0</div><span class="l">🎥 Video</span></div>
   </div>
 
-  <!-- User Section -->
   <div class="sec">
     <div id="loginWrap">
       <div class="sec-title">📱 अपनी पहचान — सिर्फ एक बार!</div>
@@ -725,13 +694,9 @@ select.mi option{background:#1a003a}
   <div class="home-btns">
     <button class="btn-big" onclick="goWishes()">🎉 बधाई देखें &amp; भेजें ➜</button>
   </div>
+</div>
 
-</div><!-- /pageHome -->
-
-<!-- WISHES PAGE -->
 <div id="pageWishes" style="display:none">
-
-  <!-- Post Section -->
   <div class="sec" style="border-color:rgba(255,45,120,.4)">
     <div class="sec-title">✍️ अपनी बधाई भेजें</div>
     <div class="ptabs">
@@ -740,24 +705,20 @@ select.mi option{background:#1a003a}
       <button class="ptab" id="tabVideo" onclick="setPType('video',this)">🎥 Video</button>
     </div>
 
-    <!-- Text always visible -->
     <textarea class="ptxt" id="ptxt" placeholder="यहाँ अपनी बधाई लिखें... 🎉🌸💐"></textarea>
 
-    <!-- File upload zone -->
     <div class="upzone" id="upzone" onclick="document.getElementById('finp').click()">
       <div style="font-size:28px;margin-bottom:6px" id="uic">🖼</div>
       <p style="font-size:12px;color:var(--sub)" id="uhint">Photo चुनें (max 5MB)</p>
       <input type="file" id="finp" accept="image/*" onchange="onFile(this)">
     </div>
 
-    <!-- File preview -->
     <div class="fprev" id="fprev">
       <img id="pimg" src="" alt="" style="display:none">
       <video id="pvid" controls playsinline muted style="display:none;width:100%;max-height:200px;object-fit:cover;background:#000"></video>
       <button class="fprev-remove" onclick="removeFile()">✕</button>
     </div>
 
-    <!-- Upload Progress -->
     <div id="uploadProgress">
       <div id="uploadProgressBar"></div>
     </div>
@@ -766,14 +727,11 @@ select.mi option{background:#1a003a}
     <button class="btn-primary" id="btnSend" onclick="submitPost()" style="margin-top:10px">🎉 बधाई भेजें</button>
   </div>
 
-  <!-- Wish Feed -->
   <div id="wishFeed">
     <div class="empty-state">🌸🌼🌺<br><br>अभी कोई बधाई नहीं है<br>पहले बधाई देने वाले आप बनें!</div>
   </div>
+</div>
 
-</div><!-- /pageWishes -->
-
-<!-- Bottom Nav -->
 <div class="bottom-nav">
   <button class="nav-btn on" id="navHome" onclick="goHome()">
     <span class="ni">🏠</span><span>Home</span>
@@ -782,28 +740,22 @@ select.mi option{background:#1a003a}
     <span class="ni">🎉</span><span>बधाइयाँ</span>
   </button>
 </div>
+</div>
 
-</div><!-- /appContent -->
-
-<!-- Media Viewer -->
 <div id="mediaViewer">
   <button class="mv-close" onclick="closeMediaViewer()">✕</button>
   <img id="mvImg" src="" style="display:none">
   <video id="mvVid" controls playsinline style="display:none;width:98%;max-height:88vh"></video>
 </div>
 
-<!-- Toast -->
 <div class="toast" id="toast"></div>
 
-<!-- PWA Button — FIX #1: with dismiss -->
 <div id="pwaBtn">
   <button class="pwa-install" onclick="pwaInstall()">📲 App Install करें</button>
   <button class="pwa-dismiss" onclick="pwaDismiss()" title="बंद करें">✕</button>
 </div>
 
-<!-- ═══ MODALS ═══ -->
-
-<!-- Admin Login -->
+<!-- MODALS -->
 <div class="ovl" id="ovlLogin">
   <div class="modal" style="max-width:340px;margin-top:60px">
     <div class="mhd">
@@ -824,7 +776,6 @@ select.mi option{background:#1a003a}
   </div>
 </div>
 
-<!-- Admin Panel -->
 <div class="ovl" id="ovlAdmin">
   <div class="modal">
     <div class="mhd">
@@ -837,7 +788,6 @@ select.mi option{background:#1a003a}
       <button class="admin-tab-btn" id="aTabBtn_drag" onclick="showAdminTab('drag')">📌 Text Drag</button>
     </div>
 
-    <!-- Banner Tab -->
     <div id="aTab_banner">
       <div class="mf">
         <span class="mlbl">🏢 Company Banner (16:9 Ratio)</span>
@@ -850,14 +800,12 @@ select.mi option{background:#1a003a}
       </div>
     </div>
 
-    <!-- Events Tab -->
     <div id="aTab_events" style="display:none">
       <div id="adminEvList" style="max-height:220px;overflow-y:auto;margin-bottom:10px"></div>
       <button class="btn-msave" style="margin-top:0;font-size:12px;padding:10px" onclick="openNewEvModal()">➕ नया Event जोड़ें</button>
       <button class="btn-danger" onclick="adminClearWishes()">🗑️ इस Event की सभी बधाइयाँ हटाएं</button>
     </div>
 
-    <!-- Text Drag Tab -->
     <div id="aTab_drag" style="display:none">
       <div class="hint-box">
         <p>📌 Text Drag — कैसे करें?</p>
@@ -877,7 +825,6 @@ select.mi option{background:#1a003a}
   </div>
 </div>
 
-<!-- Event Create/Edit -->
 <div class="ovl" id="ovlEvent">
   <div class="modal">
     <div class="mhd">
@@ -918,7 +865,6 @@ select.mi option{background:#1a003a}
   </div>
 </div>
 
-<!-- Event Link Modal -->
 <div class="ovl" id="ovlLink">
   <div class="modal" style="max-width:380px;margin-top:60px">
     <div class="mhd">
@@ -937,7 +883,6 @@ select.mi option{background:#1a003a}
   </div>
 </div>
 
-<!-- Edit Wish Modal -->
 <div class="ovl" id="ovlEditWish">
   <div class="modal" style="max-width:360px;margin-top:60px">
     <div class="mhd">
@@ -953,9 +898,6 @@ select.mi option{background:#1a003a}
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════
-     MAIN JAVASCRIPT MODULE
-═══════════════════════════════════════════════ -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
@@ -967,14 +909,12 @@ import {
   getAuth, signInWithEmailAndPassword, signOut
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
-// ── CONFIG ────────────────────────────────────────
 const CLOUD_NAME   = 'ddgeh88ci';
 const UPLOAD_PRESET= 'ewishes_unsigned';
 const ORG_CODE     = 'BVP_VARANASI';
 const AUTO_DELETE_DAYS = 5;
 const COLS = ['#7b2fff','#ff2d78','#00e5ff','#06d6a0','#ffd700','#f72585'];
 
-// Default text positions on hero
 const DEF_POS = {
   evBadge: {x:4,  y:4 },
   evTitle: {x:2,  y:60},
@@ -993,7 +933,6 @@ const app  = initializeApp(firebaseConfig);
 const db   = getFirestore(app);
 const auth = getAuth(app);
 
-// ── STATE ─────────────────────────────────────────
 const ST = {
   user: null, isAdmin: false,
   curEventId: null, lockedEventId: null,
@@ -1003,7 +942,6 @@ const ST = {
   drag: { active:false, el:null, startX:0, startY:0, origX:0, origY:0 },
 };
 
-// ── HELPERS ───────────────────────────────────────
 const $ = id => document.getElementById(id);
 const esc = s => !s?'':(s+'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const pickCol = wa => { let h=0; for(let i=0;i<wa.length;i++) h=wa.charCodeAt(i)+((h<<5)-h); return COLS[Math.abs(h)%COLS.length]; };
@@ -1026,7 +964,6 @@ function openOvl(id){ $(id).classList.add('show'); }
 function closeOvl(id){ $(id).classList.remove('show'); }
 window.closeOvl = closeOvl;
 
-// ── CLOUDINARY UPLOAD with Progress ───────────────
 async function uploadToCloudinary(file, folder='wishes', onProgress){
   return new Promise((resolve, reject) => {
     const fd = new FormData();
@@ -1051,7 +988,6 @@ async function uploadToCloudinary(file, folder='wishes', onProgress){
   });
 }
 
-// ── IMAGE COMPRESS ────────────────────────────────
 function compressImage(file, maxDim=1200, quality=0.78){
   return new Promise(res => {
     const img = new Image();
@@ -1072,7 +1008,6 @@ function compressImage(file, maxDim=1200, quality=0.78){
   });
 }
 
-// Avatar compress (square, 200px)
 function compressAvatar(file){
   return new Promise(res => {
     const img = new Image();
@@ -1091,7 +1026,6 @@ function compressAvatar(file){
   });
 }
 
-// ── SHOW PROGRESS ─────────────────────────────────
 function showProgress(pct){
   const p = $('uploadProgress'), pb = $('uploadProgressBar'), pt = $('uploadProgressTxt');
   if(pct === null){
@@ -1102,14 +1036,12 @@ function showProgress(pct){
   pt.textContent = pct<100 ? `⏳ Upload: ${pct}%` : '✅ Upload complete!';
 }
 
-// ── USER MANAGEMENT ───────────────────────────────
 function loadUser(){
   try{
     const u = localStorage.getItem('ew4_user');
     if(u){
       ST.user = JSON.parse(u);
       if(!ST.user.name) ST.user.name='';
-      // Restore photo from cache
       if(!ST.user.photoURL){
         const ph = localStorage.getItem('ew4_photo_'+ST.user.wa);
         if(ph) ST.user.photoURL = ph;
@@ -1158,7 +1090,6 @@ function doLogin(){
   ST.user = {wa, name:nm, photoURL:cached||null};
   saveUser(); renderUserBar();
   showToast('✅ स्वागत है'+(nm?' '+nm+'जी':'')+' 🌸');
-  // Background: restore from Firestore
   getDoc(doc(db,'users',wa)).then(snap=>{
     if(snap.exists()){
       const d=snap.data();
@@ -1188,7 +1119,6 @@ async function onUserPhoto(inp){
   try{
     const compressed = await compressAvatar(file);
     const photoURL   = await uploadToCloudinary(compressed,'profiles');
-    // Save to Firestore
     await setDoc(doc(db,'users',ST.user.wa),{
       wa:ST.user.wa, photoURL, updatedAt:serverTimestamp()
     },{merge:true});
@@ -1200,7 +1130,6 @@ async function onUserPhoto(inp){
 }
 window.onUserPhoto = onUserPhoto;
 
-// ── BANNER ────────────────────────────────────────
 function renderBanner(){
   const wrap=$('bannerWrap');
   const bm=localStorage.getItem('ew4_bannerURL_'+ORG_CODE);
@@ -1232,7 +1161,6 @@ function setBannerMedia(wrap,url,type){
   }
 }
 
-// ── EVENT MANAGEMENT ──────────────────────────────
 async function loadEvents(){
   try{
     if(ST.lockedEventId){
@@ -1274,7 +1202,6 @@ function renderEventTabs(){
 
 function renderHomeEvent(){
   const ev=curEvent();
-  // Reset positions to default first
   applyDefaultPositions();
   if(!ev){
     $('evBadge').innerHTML='🌟 <span>Event</span>';
@@ -1324,7 +1251,6 @@ async function loadStats(evId){
   }catch(e){}
 }
 
-// ── TEXT POSITION SAVE/LOAD ───────────────────────
 function applyDefaultPositions(){
   Object.entries(DEF_POS).forEach(([id,pos])=>{
     const el=$(id); if(!el) return;
@@ -1335,7 +1261,6 @@ function applyDefaultPositions(){
 
 function applyTextPositions(evId){
   if(!evId) return;
-  // From localStorage (instant)
   try{
     const raw=localStorage.getItem('ew4_pos_'+evId);
     if(raw){
@@ -1347,7 +1272,6 @@ function applyTextPositions(evId){
       ST.textPos[evId]=pos;
     }
   }catch(e){}
-  // From Firestore (sync all phones)
   getDoc(doc(db,'positions',ORG_CODE+'_'+evId)).then(snap=>{
     if(snap.exists()&&snap.data().pos){
       const fp=snap.data().pos;
@@ -1370,15 +1294,11 @@ function savePosLocal(evId){
   setDoc(doc(db,'positions',ORG_CODE+'_'+evId),{pos,updatedAt:serverTimestamp()}).catch(()=>{});
 }
 
-// ── DRAG: HERO TEXT LABELS ────────────────────────
 function updateAdminCursors(){
   ['evBadge','evTitle','evDesc'].forEach(id=>{
     const el=$(id); if(!el) return;
-    if(ST.isAdmin){
-      el.classList.add('admin-mode');
-    } else {
-      el.classList.remove('admin-mode');
-    }
+    if(ST.isAdmin){ el.classList.add('admin-mode'); }
+    else { el.classList.remove('admin-mode'); }
   });
 }
 
@@ -1403,7 +1323,6 @@ function dragStart(e){
   if(!container) return;
   ST.drag.active=true; ST.drag.el=el;
   ST.drag.startX=touch.clientX; ST.drag.startY=touch.clientY;
-  // Current position in %
   ST.drag.origX=parseFloat(el.style.left)||DEF_POS[el.id]?.x||0;
   ST.drag.origY=parseFloat(el.style.top) ||DEF_POS[el.id]?.y||0;
   el.style.transition='none';
@@ -1439,7 +1358,6 @@ function dragEnd(){
   }
 }
 
-// ── PAGE NAVIGATION ───────────────────────────────
 function renderPage(page){
   ST.page=page;
   $('pageHome').style.display   = page==='home'   ? 'block':'none';
@@ -1457,7 +1375,6 @@ function goWishes(){
 }
 window.goHome=goHome; window.goWishes=goWishes;
 
-// ── WISH SUBSCRIPTION ─────────────────────────────
 function subscribeWishes(){
   if(ST.unsubWishes){ ST.unsubWishes(); ST.unsubWishes=null; }
   if(!ST.curEventId) return;
@@ -1467,7 +1384,6 @@ function subscribeWishes(){
     ST.unsubWishes=onSnapshot(q,snap=>{
       renderWishes(snap.docs.map(d=>({id:d.id,...d.data()})));
     }, ()=>{
-      // Fallback without orderBy (index missing)
       const q2=query(collection(db,'wishes'),where('eventId','==',ST.curEventId));
       ST.unsubWishes=onSnapshot(q2,snap=>{
         const w2=snap.docs.map(d=>({id:d.id,...d.data()}))
@@ -1502,13 +1418,11 @@ function buildCard(w){
   const tbC={text:'bt',image:'bi',video:'bv'}[w.type]||'bt';
   const tbL={text:'Text',image:'Photo',video:'Video'}[w.type]||'Text';
 
-  // Avatar — cached photo
   const saved=localStorage.getItem('ew4_photo_'+w.wa);
   let avHTML=saved
     ?`<img src="${saved}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`
     :`<span style="font-size:12px;font-weight:900;color:#fff">${esc(w.wa.slice(-4))}</span>`;
 
-  // Media HTML
   let mediaHTML='';
   if(w.mediaURL){
     if(w.type==='image'){
@@ -1550,7 +1464,6 @@ function buildCard(w){
       ${(isOwner||ST.isAdmin)?`<button class="btn-del" onclick="doDelete('${w.id}')">🗑️</button>`:''}
     </div>`;
 
-  // Lazy load avatar if not cached
   if(!saved){
     getDoc(doc(db,'users',w.wa)).then(snap=>{
       if(snap.exists()&&snap.data().photoURL){
@@ -1567,7 +1480,6 @@ function buildCard(w){
   return card;
 }
 
-// ── EDIT WISH ─────────────────────────────────────
 function openEditWish(id, txt){
   $('editWishId').value=id;
   $('editWishTxt').value=txt;
@@ -1587,7 +1499,6 @@ async function saveEditWish(){
 }
 window.saveEditWish=saveEditWish;
 
-// ── LIKE / DELETE ─────────────────────────────────
 async function doLike(id){
   if(!ST.user){ showToast('⚠️ पहले नंबर डालें'); return; }
   try{
@@ -1611,9 +1522,8 @@ async function doDelete(id){
 }
 window.doDelete=doDelete;
 
-// ── POST / FILE HANDLING ──────────────────────────
-// FIX #2: pFile persists across tab switches
-let pType='text', pFile=null, pFileType=null;
+// ── FIX 1 & 2: पूरा updated file/submit system ──
+let pType='text', pFile=null, pFileType=null, pLocalURL=null;
 
 function setPType(t, el){
   pType=t;
@@ -1622,10 +1532,7 @@ function setPType(t, el){
   const finp=$('finp');
   if(t==='text'){
     $('upzone').style.display='none';
-    // Keep file preview visible if file was selected before
-    if(pFile){
-      $('fprev').style.display='block';
-    }
+    if(pFile) $('fprev').style.display='block';
   } else if(t==='image'){
     finp.accept='image/*';
     $('uic').textContent='🖼';
@@ -1652,51 +1559,52 @@ function setPType(t, el){
 }
 window.setPType=setPType;
 
+// ── FIX 1: onFile — instant preview via URL.createObjectURL ──
 function onFile(inp){
   const file=inp.files[0]; if(!file) return;
   const isVid=file.type.startsWith('video');
-  // Size check
+
   if(isVid&&file.size>15*1024*1024){ showToast('⚠️ Video 15MB से छोटी होनी चाहिए'); inp.value=''; return; }
   if(!isVid&&file.size>5*1024*1024){ showToast('⚠️ Photo 5MB से छोटी होनी चाहिए'); inp.value=''; return; }
 
   if(isVid){
-    // FIX #3: 30 second video check
-    const url=URL.createObjectURL(file);
-    const vid=document.createElement('video');
+    // FIX 1: Instant local URL — कोई FileReader नहीं
+    const localURL = URL.createObjectURL(file);
+    const vid = document.createElement('video');
     vid.preload='metadata';
-    vid.onloadedmetadata=function(){
-      URL.revokeObjectURL(url);
-      if(vid.duration>30){ showToast('⚠️ Video 30 सेकंड से छोटी होनी चाहिए!'); inp.value=''; return; }
-      pFile=file; pFileType='video';
-      const r=new FileReader();
-      r.onload=e=>{
-        $('fprev').style.display='block';
-        $('upzone').style.display='none';
-        $('pvid').src=e.target.result;
-        $('pvid').style.display='block';
-        $('pimg').style.display='none';
-      };
-      r.readAsDataURL(file);
+    vid.onloadedmetadata = function(){
+      if(vid.duration>30){
+        URL.revokeObjectURL(localURL);
+        showToast('⚠️ Video 30 सेकंड से छोटी होनी चाहिए!');
+        inp.value=''; return;
+      }
+      // Duration check pass — instant preview दिखाओ
+      pFile=file; pFileType='video'; pLocalURL=localURL;
+      $('fprev').style.display='block';
+      $('upzone').style.display='none';
+      $('pvid').src=localURL;
+      $('pvid').style.display='block';
+      $('pimg').style.display='none';
     };
-    vid.onerror=()=>{ URL.revokeObjectURL(url); showToast('⚠️ Video load नहीं हो सकी'); };
-    vid.src=url;
+    vid.onerror=()=>{ URL.revokeObjectURL(localURL); showToast('⚠️ Video load नहीं हो सकी'); };
+    vid.src=localURL;
     return;
   }
-  // Image
-  pFile=file; pFileType='image';
-  const r=new FileReader();
-  r.onload=e=>{
-    $('fprev').style.display='block';
-    $('upzone').style.display='none';
-    $('pimg').src=e.target.result;
-    $('pimg').style.display='block';
-    $('pvid').style.display='none';
-  };
-  r.readAsDataURL(file);
+
+  // Image — instant preview
+  const localURL = URL.createObjectURL(file);
+  pFile=file; pFileType='image'; pLocalURL=localURL;
+  $('fprev').style.display='block';
+  $('upzone').style.display='none';
+  $('pimg').src=localURL;
+  $('pimg').style.display='block';
+  $('pvid').style.display='none';
 }
 window.onFile=onFile;
 
 function removeFile(){
+  // Revoke local URL to free memory
+  if(pLocalURL){ URL.revokeObjectURL(pLocalURL); pLocalURL=null; }
   pFile=null; pFileType=null;
   $('finp').value='';
   $('fprev').style.display='none';
@@ -1706,7 +1614,7 @@ function removeFile(){
 }
 window.removeFile=removeFile;
 
-// ── SUBMIT POST ───────────────────────────────────
+// ── FIX 2: submitPost — optimistic UI, background upload ──
 async function submitPost(){
   if(!ST.user){ showToast('⚠️ पहले अपना नंबर डालें'); return; }
   if(!ST.curEventId){ showToast('⚠️ कोई Event नहीं है'); return; }
@@ -1715,56 +1623,94 @@ async function submitPost(){
 
   const btn=$('btnSend');
   btn.disabled=true; btn.textContent='⏳ भेज रहे हैं...';
-  showProgress(0);
 
-  try{
-    let mediaURL=null;
-    if(pFile){
-      showToast('⏳ Upload हो रहा है...');
-      // Compress image before upload
-      const fileToUpload = pFileType==='image'
-        ? await compressImage(pFile)
-        : pFile;
-      mediaURL=await uploadToCloudinary(fileToUpload,'wishes',pct=>{
-        showProgress(pct);
-        $('uploadProgressTxt').style.display='block';
-        $('uploadProgressTxt').textContent=pct<100?`⏳ Upload: ${pct}%`:'✅ Upload complete!';
+  // FIX 2A: अगर सिर्फ text है — तुरंत save करो, कोई wait नहीं
+  if(!pFile){
+    try{
+      await addDoc(collection(db,'wishes'),{
+        eventId:ST.curEventId,
+        wa:ST.user.wa,
+        senderName:ST.user.name||'',
+        text:txt,
+        mediaURL:null,
+        type:'text',
+        likes:[],
+        createdAt:serverTimestamp(),
       });
+      $('ptxt').value='';
+      playSuccessSound(); launchConfetti();
+      showToast('🎉 बधाई भेज दी गई! 🌸');
+      setTimeout(()=>$('wishFeed').scrollIntoView({behavior:'smooth'}),400);
+    }catch(e){
+      showToast('⚠️ Error: '+e.message);
+    }finally{
+      btn.disabled=false; btn.textContent='🎉 बधाई भेजें';
     }
+    return;
+  }
 
-    const actualType = pFile ? pFileType : 'text';
-    await addDoc(collection(db,'wishes'),{
+  // FIX 2B: File है — पहले text save करो with placeholder, background में upload
+  showProgress(0);
+  showToast('⏳ Upload हो रहा है, आप scroll कर सकते हैं...');
+
+  // Step 1: Firebase में placeholder डालो (local preview के साथ)
+  let docRef = null;
+  try{
+    docRef = await addDoc(collection(db,'wishes'),{
       eventId:ST.curEventId,
       wa:ST.user.wa,
       senderName:ST.user.name||'',
       text:txt,
-      mediaURL,
-      type:actualType,
+      mediaURL: pLocalURL, // local URL temporarily
+      type: pFileType,
       likes:[],
       createdAt:serverTimestamp(),
+      uploading: true,
     });
-
-    // Reset
-    $('ptxt').value='';
-    removeFile();
-    showProgress(null);
-    $('uploadProgressTxt').style.display='none';
-    // Reset to text tab
-    setPType('text',$('tabText'));
-
-    playSuccessSound(); launchConfetti();
-    showToast('🎉 बधाई भेज दी गई! 🌸');
-    setTimeout(()=>$('wishFeed').scrollIntoView({behavior:'smooth'}),400);
   }catch(e){
     showToast('⚠️ Error: '+e.message);
-    showProgress(null);
-  }finally{
     btn.disabled=false; btn.textContent='🎉 बधाई भेजें';
+    showProgress(null);
+    return;
+  }
+
+  // UI reset करो — user और बधाइयाँ दे सकता है
+  const savedFile = pFile;
+  const savedFileType = pFileType;
+  $('ptxt').value='';
+  removeFile();
+  btn.disabled=false; btn.textContent='🎉 बधाई भेजें';
+  playSuccessSound(); launchConfetti();
+  showToast('🎉 बधाई feed में आ गई! Upload जारी है...');
+  setTimeout(()=>$('wishFeed').scrollIntoView({behavior:'smooth'}),400);
+
+  // Step 2: Background में Cloudinary upload
+  try{
+    const fileToUpload = savedFileType==='image'
+      ? await compressImage(savedFile)
+      : savedFile;
+
+    const realURL = await uploadToCloudinary(fileToUpload,'wishes', pct=>{
+      showProgress(pct);
+    });
+
+    // Step 3: Firebase में real URL update करो
+    await setDoc(doc(db,'wishes',docRef.id),{
+      mediaURL: realURL,
+      uploading: false,
+    },{merge:true});
+
+    showProgress(null);
+    showToast('✅ Upload complete! 🎉');
+  }catch(e){
+    // Upload fail हो तो document हटाओ
+    try{ await deleteDoc(doc(db,'wishes',docRef.id)); }catch(ex){}
+    showToast('⚠️ Upload failed: '+e.message);
+    showProgress(null);
   }
 }
 window.submitPost=submitPost;
 
-// ── MEDIA VIEWER ──────────────────────────────────
 function openMediaViewer(type,src){
   const mv=$('mediaViewer'),img=$('mvImg'),vid=$('mvVid');
   if(type==='video'){
@@ -1776,7 +1722,6 @@ function openMediaViewer(type,src){
     img.style.display='block'; img.src=src;
   }
   mv.classList.add('open');
-  // Close on backdrop click
   mv.onclick=e=>{ if(e.target===mv) closeMediaViewer(); };
 }
 function closeMediaViewer(){
@@ -1789,7 +1734,6 @@ function closeMediaViewer(){
 window.openMediaViewer=openMediaViewer;
 window.closeMediaViewer=closeMediaViewer;
 
-// ── ADMIN ─────────────────────────────────────────
 function setAdminMode(on){
   ST.isAdmin=on;
   $('adminLogoutBtn').style.display=on?'inline-block':'none';
@@ -1874,7 +1818,6 @@ function renderAdminEventList(){
   });
 }
 
-// Banner upload
 function onAdminBanner(inp){
   const file=inp.files[0]; if(!file) return;
   if(file.size>10*1024*1024){ showToast('⚠️ 10MB से छोटी file चुनें'); return; }
@@ -1900,7 +1843,6 @@ async function doUploadBanner(file,type){
   }catch(err){ showToast('⚠️ Banner upload failed'); }
 }
 
-// Event CRUD
 function openNewEvModal(){
   $('aeId').value='';$('aeName').value='';$('aeDesc').value='';
   $('aeType').value='जन्मदिन 🎂';
@@ -2064,7 +2006,6 @@ async function adminClearWishes(){
 }
 window.adminClearWishes=adminClearWishes;
 
-// ── CONFETTI & SOUND ──────────────────────────────
 function playSuccessSound(){
   try{
     const ctx=new(window.AudioContext||window.webkitAudioContext)();
@@ -2078,6 +2019,7 @@ function playSuccessSound(){
     });
   }catch(e){}
 }
+
 function launchConfetti(){
   const cv=$('confettiCanvas');
   cv.width=window.innerWidth; cv.height=window.innerHeight;
@@ -2106,7 +2048,6 @@ function launchConfetti(){
   })();
 }
 
-// ── AUTO DELETE OLD WISHES ────────────────────────
 async function autoDeleteOld(){
   try{
     const cutoff=Timestamp.fromDate(new Date(Date.now()-AUTO_DELETE_DAYS*24*3600*1000));
@@ -2115,16 +2056,13 @@ async function autoDeleteOld(){
   }catch(e){}
 }
 
-// ── URL PARAMS ────────────────────────────────────
 function handleHash(){
   const params=new URLSearchParams(window.location.search);
   const evId=params.get('ev');
   if(evId){ ST.lockedEventId=evId; ST.curEventId=evId; }
 }
 
-// ── INIT ─────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async ()=>{
-  // Splash flowers
   const splash=$('splashScreen');
   const flowers=['🌸','🌺','🌼','🌻','💐','🌷','🌹','✨','⭐'];
   for(let i=0;i<18;i++){
@@ -2144,17 +2082,14 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   initHeroDrag();
   updateAdminCursors();
 
-  // Close modal on backdrop
   document.querySelectorAll('.ovl').forEach(o=>{
     o.addEventListener('click',e=>{ if(e.target===o) o.classList.remove('show'); });
   });
 
-  // Load events then hide splash
   await loadEvents();
   renderPage('home');
   setTimeout(autoDeleteOld, 15000);
 
-  // Show app
   $('appContent').style.opacity='1';
   setTimeout(()=>{
     if(splash) splash.classList.add('hide');
